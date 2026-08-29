@@ -26,7 +26,10 @@ image = (
             "MODEL_ID": MODEL_ID,
             "HF_HOME": "/cache/huggingface",
             "TRANSFORMERS_CACHE": "/cache/huggingface",
-            "TORCH_DTYPE": "auto",
+            # Force fp16 (not "auto"): TinyLlama declares bfloat16, and bf16 + transformers'
+            # internal autocast on a T4 crashes with "get_autocast_dtype: unsupported scalarType".
+            # fp16 is well-supported on T4 and is what the Class 1 notebook uses on CUDA.
+            "TORCH_DTYPE": "float16",
             "NAIVE_SERVER_HOST": "0.0.0.0",
             "ENGINE": "transformers"
         }

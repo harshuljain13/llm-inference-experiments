@@ -6,5 +6,7 @@ model_list:
       api_key: local-dev-key
 
 general_settings:
-  master_key: sk-class2-demo
+  # No master_key on purpose: this is a throwaway counterfactual gateway. With a master_key set,
+  # any request using a different key triggers a virtual-key DB lookup → "No connected db." error
+  # (there is no database). Running open lets both part6 and the part3-vs-D sweep call it keyless.
   set_verbose: false

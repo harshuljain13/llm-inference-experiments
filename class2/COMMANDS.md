@@ -4,9 +4,12 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=$PWD
 cp .env.example .env
+python scripts/download_gguf.py
+
+## Modal
 bash scripts/setup_modal.sh
 bash scripts/modal.sh deploy all
-python scripts/download_gguf.py
+
 
 # EVERY NEW TAB
 cd class2 && source .venv/bin/activate && export PYTHONPATH=$PWD

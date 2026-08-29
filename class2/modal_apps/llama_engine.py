@@ -52,24 +52,44 @@ def serve():
         urllib.request.urlretrieve(url, str(gguf_path))
         print(f"GGUF ready ({gguf_path.stat().st_size // (1024 * 1024)} MB)", flush=True)
 
-    llama_server = shutil.which("llama-server")
+    # The llama.cpp server image installs the binary at /app/llama-server and invokes it via an
+    # absolute-path ENTRYPOINT — /app is NOT on PATH, so shutil.which("llama-server") returns None.
+    # Prefer the known install path; fall back to PATH / other locations for other images.
+    candidates = [
+        "/app/llama-server",
+        "/usr/local/bin/llama-server",
+        "/usr/bin/llama-server",
+    ]
+    llama_server = next((c for c in candidates if Path(c).exists()), None) or shutil.which("llama-server")
     if not llama_server:
-        raise RuntimeError("llama-server not found in PATH inside llama.cpp image")
+        raise RuntimeError(
+            "llama-server not found at /app/llama-server or on PATH. "
+            f"PATH={os.environ.get('PATH', '')}"
+        )
 
-    print(f"Starting {llama_server} on :8080", flush=True)
-    subprocess.Popen(    [
-            llama_server,
-            "--host",
-            "0.0.0.0",
-            "--port",
-            "8080",
-            "-m",
-            str(gguf_path),
-            "-c",
-            "4096",
-            "-ngl",
-            "999",
-        ],
+    # llama-server's shared libs (libllama-server-impl.so, etc.) sit next to the binary in /app,
+    # but the image sets no LD_LIBRARY_PATH and the $ORIGIN rpath isn't resolving under exec — so
+    # the loader fails with "cannot open shared object file". Point it at the binary's own dir.
+    lib_dir = str(Path(llama_server).parent)
+    os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(
+        p for p in (lib_dir, os.environ.get("LD_LIBRARY_PATH", "")) if p
     )
-    
-    
+
+    # IMPORTANT: launch llama-server as a SUBPROCESS, not os.execvp(). execvp replaces this
+    # process image, which destroys Modal's runtime + heartbeat thread — Modal then sees no
+    # heartbeat and kills the container after 900s ("Runner heartbeat timeout"). With @web_server
+    # we must keep the Modal runtime alive to proxy port 8080 and heartbeat, so we spawn the
+    # server as a child and return; Modal waits for the port (startup_timeout) then proxies.
+    cmd = [
+        llama_server,
+        "--host", "0.0.0.0",
+        "--port", "8080",
+        "-m", str(gguf_path),
+        "-c", "2048",   # TinyLlama's trained context; 4096 just gets capped to this anyway
+        "-ngl", "999",  # offload all layers to the T4
+    ]
+    print(
+        f"Starting {' '.join(cmd)} (LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']})",
+        flush=True,
+    )
+    subprocess.Popen(cmd, env=os.environ)
