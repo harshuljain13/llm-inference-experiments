@@ -1,583 +1,267 @@
-# class-code
+<p align="center">
+  <strong>LLM Inference Experiments</strong>
+</p>
 
+<p align="center">
+  <strong>Runnable experiments for serving large language models — the empirical companion to the handbook.</strong>
+</p>
 
-### Extra class
-If you understand the code, try this
-Mini LLM Serving Syste
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-the-experiments">Experiments</a> •
+  <a href="#-metrics-vocabulary">Metrics</a> •
+  <a href="#-what-moves-what">Levers</a> •
+  <a href="#-adding-an-experiment">Contributing</a>
+</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/vLLM-0.8+-orange.svg" alt="vLLM">
+  <img src="https://img.shields.io/badge/PyTorch-2.0+-EE4C2C.svg" alt="PyTorch">
+  <img src="https://img.shields.io/badge/CUDA-12.0+-76B900.svg" alt="CUDA">
+  <img src="https://img.shields.io/badge/CPU--friendly-most%20labs-success.svg" alt="CPU friendly">
+</p>
 
-The entire assignment is about one idea: The GPU is scarce. Decide carefully what work enters, what work runs next, and where it runs. Then measure whether your decisions actually helped.
+---
 
+## Why This Exists
 
+[**LLM Inference at Scale**](https://github.com/harshuljain13/llm-inference-at-scale) explains how LLM serving works. This repo is where those claims get **measured**.
 
-For your final project, you will build this with real models and on actual GPUs
+Reading that paged attention reduces fragmentation is one thing. Watching your block utilization curve bend when you change `block_size` is another. Reading that admission control protects tail latency is one thing. Watching goodput collapse to zero *without* it, at a load you can point to on a graph, is another.
 
+Every experiment here answers a question of the form **"what happens to metric M when I change knob K?"** — and reports the answer as a curve, not an anecdote.
 
+One idea runs through all of it:
 
-You are going to build a fake LLM serving system. There is no real model and no GPU. Imagine 100 users sending requests to an LLM server, but your server has limited capacity. Your system has to answer three questions:
+> **The GPU is scarce.** Decide carefully what work enters, what runs next, and where it runs. Then measure whether your decisions actually helped.
 
-Should I accept this request? → Admission control
+---
 
-Which request should run next? → Scheduler
+## 🚀 Quick Start
 
-Which worker/GPU should receive it? → Router
+```bash
+git clone https://github.com/harshuljain13/llm-inference-experiments.git
+cd llm-inference-experiments
+```
 
-Finally, you will connect all three and test the complete system.
+Most labs are **CPU-friendly and deterministic** — start there, no GPU bill required.
 
+```bash
+cd class5 && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m smol_vllm.demo          # paged KV, scheduling, preemption
+```
 
+New here? Read [`class1/overview.md`](class1/overview.md) first. Every lab has an `overview.md` that maps the files and explains the concept before you run anything.
 
-The request
-Every request has:
+---
 
+## 🧭 The Experiments
 
-JavaScript
-id
-arrival_t
-priority          # 0 = important/interactive, 20 = batch
-prompt_tokens     # size of the input
-max_new_tokens    # maximum output size
-prefix_hash       # identifies shared input, or None
-timeout_s         # how long the user is willing to wait
-tenant            # customer/user group
+Each lab moves one layer up the stack. Read the `overview.md`, then run the code.
 
-Your fake server has limited:
+| Lab | Layer | The question it answers | GPU | Overview |
+|---|---|---|---|---|
+| **[class1](class1/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](class1/overview.md) |
+| **[class2](class2/)** | Server | What breaks under concurrency, and at which layer? | Optional | [overview](class2/overview.md) |
+| **[class5](class5/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](class5/overview.md) |
+| **[class7](class7/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](class7/overview.md) |
 
+### The stack, assembled
 
-JavaScript
-decode_slots      # how many requests can generate tokens at once
-KV blocks         # memory available for running requests
-prefill tokens    # how much input we can process per step
+```
+   class1   model      prefill vs decode · KV cache · why output tokens cost more
+      ↓
+   class2   server     model → engine → server → gateway · why naive servers melt
+      ↓
+   class5   engine     paged KV blocks · continuous batching · preemption livelock
+      ↓
+   class7   gateway    admission control · deadline-ordered queue · prefix routing
+```
 
-Think of these as the server's three scarce resources.
+### What's in each
 
+<details>
+<summary><strong>class1 — Prefill vs Decode</strong></summary>
 
+A single notebook. Times the two phases of an LLM call separately and shows they are different workloads: prefill is compute-bound and parallel, decode is memory-bandwidth-bound and sequential. Ends by mapping the asymmetry onto API pricing — output tokens cost more because decode is slower, and the price list is a readout of the hardware.
 
-This exercise has 4 parts.
+**Files:** `class1.ipynb`
+**Handbook:** Ch. 00 (Transformer at Inference), Ch. 01 (GPU Hardware)
+</details>
 
+<details>
+<summary><strong>class2 — Build, Break, Observe a Server</strong></summary>
 
+Wrap a model in FastAPI the obvious way, then break it with concurrency. Compares four systems under identical load: a naive server, llama.cpp as a real engine, a batching proxy, and a routing gateway. The naive server is bad *on purpose* — a global model lock, no batching, no backpressure.
 
-Part 1. Admission Control - Should we accept the request?
-File: admit.py
+The sharp comparison is the batching proxy vs. the routing gateway: both are "gateways," but only one moves throughput, because batching is an engine concern.
 
-Write:
+**Files:** `naive_server/`, `modal_apps/`, `scripts/part*.py`, `class2.ipynb`
+**Handbook:** Ch. 05.3 (Continuous Batching), Ch. 06 (Engines), Ch. 08 (Serving)
+</details>
 
+<details>
+<summary><strong>class5 — smol-vllm: Build the Engine</strong></summary>
 
-Python
-should_shed(req, snap)
+A miniature vLLM in ~1,500 lines. Paged KV blocks with a free list and refcounts, a scheduler that promotes and preempts, and a metrics layer. Runs on CPU against a fake model, so sweeps are free and seeded runs are reproducible.
 
-It answers:
+Includes `exercises.py` — three stubs (`allocate`, `append_slot`, `schedule_promotions`) with full specs and no implementations — plus a deliberate **preemption livelock** reproduction: a system at 100% utilization making zero forward progress.
 
-"Is the server too busy to safely accept this request?"
+**Files:** `smol-vllm/smol_vllm/{block_manager,scheduler,engine}.py`, `demo.py`
+**Handbook:** Ch. 04.1 (PagedAttention), Ch. 04.5 (Prefix Caching), Ch. 05.3 (Continuous Batching)
+</details>
 
-Return:
+<details>
+<summary><strong>class7 — Gateway over Two vLLM Replicas</strong></summary>
 
+Real vLLM, two replicas, one GPU, `--max-num-seqs 8` and not raisable. The constraint is the lesson. A gateway makes three decisions: admit or shed (five checks, including refusing work that provably cannot meet its deadline), queue order (EDF with anti-starvation aging), and replica choice (prefix-cache affinity scored against load).
 
-JavaScript
-(shed?, code, retry_after_seconds)
+Ships with four presets — `baseline` → `route` → `queue` → `full` — benchmarked under identical load.
 
+**Files:** `gateway/`, `app.py`, `limiter.py`, `bench/report.py`
+**Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
+</details>
 
+### Projects
 
-First: write these tests
+| Project | What you build |
+|---|---|
+| [Mini LLM Serving System](projects/mini-serving-system.md) | Admission control, scheduler, and router against a simulated GPU — then all three connected. Includes postmortem-style scenarios modeled on real incidents. |
 
+---
 
-Your tests must show:
+## 📊 Metrics Vocabulary
 
+Used identically across every lab. Ambiguity here is the fastest way to draw a wrong conclusion — if a column says TTFT, it must actually be TTFT.
 
+| Metric | Definition | Governed by |
+|---|---|---|
+| **TTFT** | submit → first token | prefill + queue wait |
+| **ITL** | interval between output tokens | decode speed, batch size |
+| **Throughput** | completions / sec | batch efficiency |
+| **Goodput** | completions / sec **within deadline** | ← the number that matters |
+| **KV utilization** | blocks used / blocks total | admission pressure |
+| **Preempt rate** | evictions / sec | KV overcommit |
+| **Wasted tokens** | decode work thrown away by preemption | preemption cost |
+| **Queue wait** | enqueue → dispatch | backlog depth |
+| **Prefix hit rate** | requests reusing ≥1 cached block | routing quality |
+| **Load spread** | max − min requests per replica | balancing quality |
+| **Shed rate** | refusals / sec, **broken out by reason** | admission policy |
 
+> **Throughput and goodput diverge under overload — and that divergence is the whole point.** A system can maximize throughput while goodput falls to zero: everything completes, all of it too late to matter.
 
-JavaScript
-| Situation | Result |
-| :--- | :--- |
-| Tenant has used 96% of token allowance | reject with 429 |
-| Tenant has used 96% of request allowance | reject with 429 |
-| Request would probably wait > half its timeout | reject with 503/529 |
-| Only 5% KV memory remains + new prefix | reject with 503/529 |
-| Only 5% KV memory remains + prefix already exists | accept |
-| Very bad tail latency + interactive request | accept |
-| Very bad tail latency + batch request | reject |
+---
 
+## 🎛 What Moves What
 
-Then implement these rules
+The causal map these experiments exist to establish. Direction matters more than magnitude.
 
+**Model layer** — `class1`
 
-1. Protect tenants.
+| Lever | Primary effect | Should *not* move |
+|---|---|---|
+| prompt length ↑ | TTFT ↑ (≈linear) | ITL |
+| output length ↑ | total latency ↑ | TTFT |
+| KV cache off | ITL ↑↑ (quadratic) | TTFT |
 
-Check the tenant's token limit before its request-count limit.
+**Engine layer** — `class5`
 
-Why? Ten requests are not necessarily ten times the same amount of work.
+| Lever | Primary effect | Trade / watch for |
+|---|---|---|
+| `max_batch_size` ↑ | throughput ↑, **then collapses** | ITL ↑; preempts spike at the KV wall |
+| `num_gpu_blocks` ↓ | preempts ↑ | wasted tokens ↑, goodput ↓ nonlinearly |
+| `block_size` ↑ | internal fragmentation ↑ | block-table overhead ↓ — a sweet spot exists |
+| `preempt_guard` off | **livelock** | throughput → 0 at 100% utilization |
+| prefix sharing on | effective KV capacity ↑ | more concurrency at the same memory |
 
+**Gateway layer** — `class7`
 
+| Lever | Primary effect | Trade | Visible only when |
+|---|---|---|---|
+| admission on | **goodput ↑** | throughput ↓, admitted ↓ | overloaded |
+| `KV_CEILING` ↓ | sheds earlier, p99 ↓ | more false rejects | near the KV wall |
+| queue on | interactive p99 ↓ | long-prompt p99 ↑ | queue depth > 1 |
+| `AGING_GAIN` ↑ | starvation ↓ | EDF purity ↓ | mixed prompt sizes |
+| `W_LOAD` vs `W_PREFIX` | spread ↔ hit rate | direct tradeoff | replicas actually busy |
+| `DISPATCH_OVERSHOOT` ↑ | GPU utilization ↑ | queue wait ↑ | saturated |
 
-2. Don't accept requests that are already doomed.
+**Read the last column carefully.** Most gateway levers are no-ops below saturation. An experiment run at 30% utilization will show admission control doing nothing — correctly, and uninformatively.
 
-Estimate:
+---
 
+## 📐 Measurement Discipline
 
-JavaScript
-expected queue wait = queue length × p50 TTFT
+Three rules, each learned the hard way.
 
-If that is more than half of the request's timeout, reject it.
+**1. Sweep load. Never measure at a single point.**
+Every metric is a function of offered load. The interesting behavior is at the knee, and single-point measurements almost always land on the flat part of the curve.
 
+```
+   goodput
+     │      ╭─────╮
+     │     ╱       ╲          without admission control:
+     │    ╱          ╲           collapses past the knee
+     │   ╱             ╲___
+     │  ╱      ╭────────────  with admission control:
+     │ ╱      ╱                  plateaus instead
+     │╱______╱
+     └──────────────────────  offered load
+             ↑ knee
+```
 
+**2. Check what should *not* move.**
+If changing prompt length shifts your ITL, the measurement is wrong before the conclusion is. Every experiment declares its invariants.
 
-3. Don't run out of KV memory.
+**3. Report goodput, not throughput.**
+Throughput rewards a system for finishing work nobody is waiting for anymore.
 
-If less than 8% of KV memory remains, reject a request whose prefix is not already cached. A request using a prefix we already have is allowed in.
+---
 
+## ➕ Adding an Experiment
 
+```
+<name>/
+  overview.md      what it measures, why, and how it connects
+  README.md        how to run it
+  requirements.txt pinned
+  <code>
+  results/         committed outputs — CSV, plots (never raw logs or secrets)
+```
 
-4. Protect interactive users.
+`overview.md` is the contract. It states:
 
-If p99 latency is more than 4× p50 latency and the queue is growing:
+1. **The question** — "what happens to M when I change K?"
+2. **The hypothesis** — expected direction, before running
+3. **The invariants** — what should *not* move
+4. **The load range** — where on the curve this was measured
+5. **The handbook link** — which chapter this grounds
 
-keep priority < 10 requests;
+Then add a row to [The Experiments](#-the-experiments) and cross-link the handbook chapter.
 
-reject priority >= 10 requests.
+**Conventions:** pin dependencies · seed anything random · commit results, gitignore secrets and raw logs · a negative result is a result, and belongs in `overview.md` with the reason.
 
-Important: admission control does not retry requests or move them to another worker. It only says accept or reject.
+---
 
+## 🔗 Related
 
+| Repo | What it is |
+|---|---|
+| [llm-inference-at-scale](https://github.com/harshuljain13/llm-inference-at-scale) | The handbook — 12 chapters, ~55 modules. Theory these experiments test. |
+| **This repo** | The lab bench. Runnable code, measured curves. |
 
-Use:
+---
 
+## 👤 About the Author
 
-JavaScript
-429 = tenant limit
-503/529 = server capacity
+**Harshul Jain** is a Senior ML Infrastructure Engineer specializing in real-time ML systems, feature stores, and LLM serving infrastructure. He builds and operates ML platforms serving millions of users, mentors 300+ engineers through an eMentoring program, and is a recurring speaker at ML infrastructure conferences.
 
-Short question
-In about ½ page, explain which of your rules represents the ideas behind:
+- GitHub: [@harshuljain13](https://github.com/harshuljain13)
+- Newsletter: [The Engineer's Digest](https://harshuljain.substack.com)
 
-DALL·E's 5-minute cancellation,
+---
 
-Anthropic's late-capacity behavior,
-
-Cloudflare overload protection.
-
-
-
-Part 2. Scheduler - Which request gets the GPU?
-File: sched.py
-
-
-
-Now pretend a request has been accepted. And your fake GPU can only do a limited amount of work per step.
-
-
-
-Write:
-
-
-Python
-step(waiting, running, budget)
-
-Each call to step() means: "The GPU gets one more chance to do work."
-
-
-
-You must support three ways of choosing requests:
-
-
-JavaScript
-fcfs
-priority
-drr
-
-So:
-
-
-JavaScript
-priority 0 → before priority 20
-
-If priorities are equal, use arrival time.
-
-
-
-Rules to add on scheduler:
-
-Don't process huge prompts all at once: If a request has a 32,000-token prompt but the step budget is 2,048, do not process all 32,000 tokens at once. Process at most 2,048 this step and continue later. This is chunked prefill.
-
-Don't let one huge prompt block decodingAfter processing at most one prefill chunk, use the remaining capacity for requests that are already decoding. In other words:
-
-
-JavaScript
-one prefill chunk
-        ↓
-use whatever remains for decoding
-
-
-
-If KV memory runs out, preempt i.e. stop the lowest-priority running request. Throw away its KV memory and put it back into the waiting queue. When it runs again, it has to recompute its prompt. This is intentionally preempt, don't swap.
-
-Count:
-
-
-JavaScript
-preempts
-wasted_decode_tokens
-
-
-If the client disconnects,
-
-
-Python
-req.aborted == True
-
-then, remove it immediately. Free its KV memory and do not generate any more tokens for it.
-
-
-
-Count:
-
-
-JavaScript
-aborted_freed
-
-
-
-
-
-Now, run this workload
-Create:
-
-
-JavaScript
-traces/mixed.jsonl
-
-containing:
-
-
-JavaScript
-70% interactive
-  priority 0
-  prompt: 200–800
-  output: 64–256
-
-20% batch
-  priority 20
-  prompt: 2,000–8,000
-  output: 512–2,048
-
-10% shared-prefix agents
-  same prefix
-  prompt: 4,000
-  3,500 tokens are shared
-
-Run for 60 simulated seconds using:
-
-
-JavaScript
-FCFS
-Priority
-DRR
-
-Measure:
-
-
-JavaScript
-completed requests / second
-interactive p99 TTFT
-batch p99 TTFT
-preempts / second
-wasted decode tokens
-requests rejected
-
-Answer:
-Which scheduler wastes the most decode work? Explain why in one paragraph.
-
-
-
-Part 3. Router - Which worker/GPU should get the request?
-
-
-File: router.py
-
-
-
-Now create two fake workers:
-
-
-JavaScript
-Worker A
-Worker B
-
-Each worker tells you:
-
-
-JavaScript
-how much KV memory is free
-how many requests are running
-how many are waiting
-which prefixes it has cached
-its p99 latency
-whether it is healthy
-
-Write:
-
-
-Python
-pick(req, workers)
-
-It chooses where the request goes.
-
-Support:
-
-
-JavaScript
-random
-least_loaded
-p2c
-prefix_then_load
-
-
-
-Add 3 safety rules to your router:
-
-Missing information does NOT mean zero load: If a worker is unhealthy or its load score is unknown:
-
-
-JavaScript
-unknown ≠ idle
-
-Only use unknown workers if all workers are unknown. This is H6.
-
-
-
-Don't bounce an overloaded request foreverBefore choosing a worker, check whether each worker would reject the request using your L1 admission logic.
-
-
-
-If both workers reject it:
-
-
-JavaScript
-return Shed(503, retry_after=2)
-
-Do not go A → B → A → B.
-
-This is H4.
-
-
-
-Router experiments:
-
-
-Run three traces.
-
-T1 - No shared prefixes
-Every request has a different prefix.
-
-Question: Does P2C balance load better than random?
-
-T2 - Lots of shared prefixes
-40% of requests share one prefix.
-
-Question: Does prefix-aware routing save KV memory?
-
-You should see approximately:
-
-
-JavaScript
-KV(prefix_then_load)
-    <
-0.4 × KV(least_loaded)
-
-T3 - Bad/stale information
-Make worker B's information 15 seconds old.
-
-Its cached information says:
-
-
-JavaScript
-"B is empty"
-
-even though B is actually busy.
-
-Show that least_loaded can send too much traffic to B.
-
-Then show that your unknown/stale-telemetry handling prevents this mistake.
-
-Report:
-
-
-JavaScript
-p99 TTFT
-KV allocated
-shed %
-traffic sent to stale B
-
-for all four routing strategies.
-
-
-
-Part 4. Put everything together
-File: serve.py
-
-Your complete system should behave like:
-
-
-JavaScript
-client
-   ↓
-Should we accept it?
-   ↓
-admit()
-   ↓
-Which worker?
-   ↓
-pick()
-   ↓
-worker queue
-   ↓
-GPU step
-   ↓
-step()
-
-Use:
-
-one process;
-
-two fake workers;
-
-one simulated clock.
-
-
-
-Submit
-
-JavaScript
-admit.py
-sched.py
-router.py
-serve.py
-
-tests/ (only if you are doing advanced)
-traces/
-plots/soak.png
-
-REPORT.pdf       # ≤ 2 pages (all tables with short explanations)
-
-
-
-By the end of this, you should be able to answer these
-Where do I prevent accepting work that will time out?
-
-Where do I protect KV memory?
-
-Where do I prioritize interactive traffic?
-
-Where do I prevent one tenant from monopolizing the GPU?
-
-Where do I preempt a request?
-
-Where do I exploit shared prefixes?
-
-Where do I handle missing worker telemetry?
-
-Where do I stop failover from making overload worse?
-
-=
-
-
-
-Advanced:
-
-
-These tests basically test you on real postmortems within OpenAI, Anthropic and if you can fix the problems like their engineering teams do
-
-
-
-1. DALL·E soak
-Set:
-
-
-JavaScript
-timeout = 5 seconds
-p50 job time = 2 seconds
-
-Keep sending requests until estimated queue wait exceeds 2.5 seconds. Your system must start shedding before completed requests fall to zero.
-
-
-
-Create:
-
-
-JavaScript
-plots/soak.png
-
-showing:
-
-
-JavaScript
-admitted
-completed
-shed
-
-over time.
-
-
-
-2. Worker failure and recovery
-Kill worker B.
-
-→ Admission should decrease.
-
-Bring B back.
-
-→ Gradually increase admission from 10% to 100% over 30 seconds.
-
-Only continue increasing while:
-
-
-JavaScript
-p99 TTFT < 2 × baseline
-
-If latency exceeds that:
-
-→ stop increasing and shed traffic.
-
-
-
-3. Correct error code
-Tenant over token limit + empty fleet:
-
-
-JavaScript
-429
-
-NOT 503.
-
-Fleet out of KV + tenant under its limit:
-
-
-JavaScript
-503/529
-
-NOT 429.
-
-
-
-4. Prefix stickiness
-On T2:
-
-
-JavaScript
-prefix_then_load KV
-    <
-0.4 × least_loaded KV
-
-
-
-5. Abort
-Abort a request during decoding.
-
-The next step() must:
-
-free its KV;
-
-increment aborted_freed;
-
-generate zero additional tokens.
-
-
-
+<p align="center">
+  <em>Labs originate from an LLM inference course; overviews, fixes, and measurement methodology are my own.</em>
+</p>
