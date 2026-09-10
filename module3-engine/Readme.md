@@ -11,7 +11,6 @@
 | **Commands cheat sheet** | [COMMANDS.md](./COMMANDS.md) |
 | **Engine source** | [smol-vllm/](./smol-vllm/) |
 | **Workflow diagram** | [assets/engine_workflow.png](./assets/engine_workflow.png) |
-| **Instructor runbook** | [extra/class5/main.md](../../extra/class5/main.md) |
 | **Lambda GPU (remote Jupyter)** | [LAMBDA.md](./LAMBDA.md) |
 
 Commands below — same content as [COMMANDS.md](./COMMANDS.md).
@@ -19,7 +18,7 @@ Commands below — same content as [COMMANDS.md](./COMMANDS.md).
 ---
 
 # SETUP (once)
-cd class5
+cd module3-engine
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -28,7 +27,7 @@ source .env
 python -c "from smol_vllm import LLMEngine; print('smol_vllm OK')"
 
 # EVERY NEW TAB
-cd class5 && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd module3-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # If import fails: vendor folder must be smol-vllm/ (not smol_vllm/) — reinstall:
 pip install -r requirements.txt

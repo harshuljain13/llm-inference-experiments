@@ -7,7 +7,7 @@ Launch the instance in the [Lambda Cloud console](https://cloud.lambda.ai), SSH 
 **Env (once on your Mac):**
 
 ```bash
-cd class5
+cd module3-engine
 cp .env.example .env
 # edit .env — use YOUR values (never commit .env):
 #   export LAMBDA=ubuntu@YOUR_LAMBDA_IP   ← IP from Lambda console, NO "ssh" prefix
@@ -27,12 +27,12 @@ ssh -i "$LAMBDA_SSH_KEY" -o BatchMode=yes "$LAMBDA" echo "SSH OK"   # must print
 
 ---
 
-## 1. Copy class5 to the instance
+## 1. Copy module3-engine to the instance
 
 **From your Mac** (prompt must be `jarvis@Mac`, not `ubuntu@...`):
 
 ```bash
-cd class5
+cd module3-engine
 source .env
 bash scripts/sync_to_lambda.sh
 ```
@@ -40,12 +40,12 @@ bash scripts/sync_to_lambda.sh
 Or manually:
 
 ```bash
-cd class5
+cd module3-engine
 source .env
 rsync -avz --progress -e "ssh -i $LAMBDA_SSH_KEY" \
   --exclude '.venv' --exclude '.ipynb_checkpoints' \
   --exclude '__pycache__' --exclude 'logs' --exclude '.env' \
-  ./ $LAMBDA:~/class5/
+  ./ $LAMBDA:~/module3-engine/
 ```
 
 ---
@@ -56,7 +56,7 @@ SSH in:
 
 ```bash
 ssh -i "$LAMBDA_SSH_KEY" $LAMBDA
-cd ~/class5
+cd ~/module3-engine
 bash scripts/lambda_setup.sh
 ```
 
@@ -75,7 +75,7 @@ bash scripts/lambda_check.sh   # expect: Real model ready OK
 **On the Lambda instance** (SSH session):
 
 ```bash
-cd ~/class5
+cd ~/module3-engine
 bash scripts/lambda_jupyter.sh
 ```
 
@@ -106,7 +106,7 @@ Run `class5.ipynb` top to bottom — Parts A–C + B on FakeModel; **Part D** is
 ## 5. Quick verify (optional, on instance)
 
 ```bash
-cd ~/class5 && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd ~/module3-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # CPU path — all of Part A/C (FakeModel)
 python -c "from smol_vllm import LLMEngine; print('OK')"
@@ -145,7 +145,7 @@ print()
 On the instance:
 
 ```bash
-cd ~/class5 && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd ~/module3-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 smol-vllm-demo                              # all 5 experiments
 python agent_demo.py "What is KV cache?"   # CrewAI Part B
@@ -160,7 +160,7 @@ python agent_demo.py "What is KV cache?"   # CrewAI Part B
 | `Permission denied (publickey)` | Wrong SSH key — set `LAMBDA_SSH_KEY` to the key registered in Lambda console at instance launch |
 | `Could not resolve hostname your_lambda_ip` | `.env` still has placeholder — set `export LAMBDA=ubuntu@REAL_IP` from Lambda console |
 | `Could not resolve hostname ssh` | Remove `ssh` from `LAMBDA` — use `ubuntu@IP` not `ssh ubuntu@IP` |
-| rsync: `./class5/` not found | You're already in `class5/` — use `./` as source |
+| rsync: `./module3-engine/` not found | You're already in `module3-engine/` — use `./` as source |
 | Login page / invalid token | Old Jupyter still running — on Lambda: `pkill -f jupyter`, restart `lambda_jupyter.sh`. Or Mac port 8888 in use — tunnel via `-L 8889:127.0.0.1:8888` |
 | Browser can't connect | Check SSH `-L` tunnel is running; Jupyter must bind `127.0.0.1:8888` |
 | `cuda available False` | Run `nvidia-smi`; reinstall torch with CUDA wheels if needed |

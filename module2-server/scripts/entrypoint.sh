@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace/class2
-export PYTHONPATH="/workspace/class2:${PYTHONPATH:-}"
+cd /workspace/module2-server
+export PYTHONPATH="/workspace/module2-server:${PYTHONPATH:-}"
 
 cmd="${1:-help}"
 
@@ -30,7 +30,7 @@ case "$cmd" in
       --port="$PORT" \
       --no-browser \
       --allow-root \
-      --NotebookApp.token='class2' \
+      --NotebookApp.token='module2-server' \
       --NotebookApp.password=''
     ;;
   load-test)
@@ -49,7 +49,7 @@ Class 2 — available commands:
   naive          Start the naive inference server     → http://localhost:8000
   relay          Start RelayServe + llama.cpp         → http://localhost:8080
   litellm        Start LiteLLM proxy                  → http://localhost:4000
-  jupyter        Open the lab notebook                → http://localhost:8888  (token: class2)
+  jupyter        Open the lab notebook                → http://localhost:8888  (token: module2-server)
   load-test      Run Part 3 concurrency sweep
   part1          Run Part 1 anatomy script
   metrics-watch  Run Part 5 /metrics poller

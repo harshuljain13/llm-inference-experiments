@@ -13,13 +13,13 @@ if [[ -z "${LAMBDA:-}" || -z "${LAMBDA_SSH_KEY:-}" ]]; then
   exit 1
 fi
 
-echo "== Sync class5 to Lambda =="
+echo "== Sync module3-engine to Lambda =="
 bash scripts/sync_to_lambda.sh
 
 echo "== GPU smoke + §7 prefill/decode (remote) =="
 ssh -i "$LAMBDA_SSH_KEY" -o BatchMode=yes "$LAMBDA" bash -s <<'REMOTE'
 set -euo pipefail
-cd ~/class5
+cd ~/module3-engine
 source .venv/bin/activate
 export PYTHONPATH="$PWD"
 python -c "

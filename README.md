@@ -48,12 +48,12 @@ cd llm-inference-experiments
 Most labs are **CPU-friendly and deterministic** — start there, no GPU bill required.
 
 ```bash
-cd class5 && python -m venv .venv && source .venv/bin/activate
+cd module3-engine && python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m smol_vllm.demo          # paged KV, scheduling, preemption
 ```
 
-New here? Read [`class1/overview.md`](class1/overview.md) first. Every lab has an `overview.md` that maps the files and explains the concept before you run anything.
+New here? Read [`module1-model/overview.md`](module1-model/overview.md) first. Every lab has an `overview.md` that maps the files and explains the concept before you run anything.
 
 ---
 
@@ -63,27 +63,27 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
 
 | Lab | Layer | The question it answers | GPU | Overview |
 |---|---|---|---|---|
-| **[class1](class1/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](class1/overview.md) |
-| **[class2](class2/)** | Server | What breaks under concurrency, and at which layer? | Optional | [overview](class2/overview.md) |
-| **[class5](class5/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](class5/overview.md) |
-| **[class7](class7/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](class7/overview.md) |
+| **[module1-model](module1-model/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](module1-model/overview.md) |
+| **[module2-server](module2-server/)** | Server | What breaks under concurrency, and at which layer? | Optional | [overview](module2-server/overview.md) |
+| **[module3-engine](module3-engine/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](module3-engine/overview.md) |
+| **[module4-gateway](module4-gateway/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module4-gateway/overview.md) |
 
 ### The stack, assembled
 
 ```
-   class1   model      prefill vs decode · KV cache · why output tokens cost more
-      ↓
-   class2   server     model → engine → server → gateway · why naive servers melt
-      ↓
-   class5   engine     paged KV blocks · continuous batching · preemption livelock
-      ↓
-   class7   gateway    admission control · deadline-ordered queue · prefix routing
+   module1-model     prefill vs decode · KV cache · why output tokens cost more
+        ↓
+   module2-server    model → engine → server → gateway · why naive servers melt
+        ↓
+   module3-engine    paged KV blocks · continuous batching · preemption livelock
+        ↓
+   module4-gateway   admission control · deadline-ordered queue · prefix routing
 ```
 
 ### What's in each
 
 <details>
-<summary><strong>class1 — Prefill vs Decode</strong></summary>
+<summary><strong>module1-model — Prefill vs Decode</strong></summary>
 
 A single notebook. Times the two phases of an LLM call separately and shows they are different workloads: prefill is compute-bound and parallel, decode is memory-bandwidth-bound and sequential. Ends by mapping the asymmetry onto API pricing — output tokens cost more because decode is slower, and the price list is a readout of the hardware.
 
@@ -92,7 +92,7 @@ A single notebook. Times the two phases of an LLM call separately and shows they
 </details>
 
 <details>
-<summary><strong>class2 — Build, Break, Observe a Server</strong></summary>
+<summary><strong>module2-server — Build, Break, Observe a Server</strong></summary>
 
 Wrap a model in FastAPI the obvious way, then break it with concurrency. Compares four systems under identical load: a naive server, llama.cpp as a real engine, a batching proxy, and a routing gateway. The naive server is bad *on purpose* — a global model lock, no batching, no backpressure.
 
@@ -103,7 +103,7 @@ The sharp comparison is the batching proxy vs. the routing gateway: both are "ga
 </details>
 
 <details>
-<summary><strong>class5 — smol-vllm: Build the Engine</strong></summary>
+<summary><strong>module3-engine — smol-vllm: Build the Engine</strong></summary>
 
 A miniature vLLM in ~1,500 lines. Paged KV blocks with a free list and refcounts, a scheduler that promotes and preempts, and a metrics layer. Runs on CPU against a fake model, so sweeps are free and seeded runs are reproducible.
 
@@ -114,7 +114,7 @@ Includes `exercises.py` — three stubs (`allocate`, `append_slot`, `schedule_pr
 </details>
 
 <details>
-<summary><strong>class7 — Gateway over Two vLLM Replicas</strong></summary>
+<summary><strong>module4-gateway — Gateway over Two vLLM Replicas</strong></summary>
 
 Real vLLM, two replicas, one GPU, `--max-num-seqs 8` and not raisable. The constraint is the lesson. A gateway makes three decisions: admit or shed (five checks, including refusing work that provably cannot meet its deadline), queue order (EDF with anti-starvation aging), and replica choice (prefix-cache affinity scored against load).
 
@@ -152,7 +152,7 @@ Used identically across every lab. Ambiguity here is the fastest way to draw a w
 
 The causal map these experiments exist to establish. Direction matters more than magnitude.
 
-**Model layer** — `class1`
+**Model layer** — `module1-model`
 
 | Lever | Primary effect | Should *not* move |
 |---|---|---|
@@ -160,7 +160,7 @@ The causal map these experiments exist to establish. Direction matters more than
 | output length ↑ | total latency ↑ | TTFT |
 | KV cache off | ITL ↑↑ (quadratic) | TTFT |
 
-**Engine layer** — `class5`
+**Engine layer** — `module3-engine`
 
 | Lever | Primary effect | Trade / watch for |
 |---|---|---|
@@ -170,7 +170,7 @@ The causal map these experiments exist to establish. Direction matters more than
 | `preempt_guard` off | **livelock** | throughput → 0 at 100% utilization |
 | prefix sharing on | effective KV capacity ↑ | more concurrency at the same memory |
 
-**Gateway layer** — `class7`
+**Gateway layer** — `module4-gateway`
 
 | Lever | Primary effect | Trade | Visible only when |
 |---|---|---|---|

@@ -1,4 +1,4 @@
-"""GPU / Lambda readiness checks for class5 (notebook + scripts/lambda_check.sh)."""
+"""GPU / Lambda readiness checks for module3-engine (notebook + scripts/lambda_check.sh)."""
 
 from __future__ import annotations
 

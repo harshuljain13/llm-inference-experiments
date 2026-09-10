@@ -1,25 +1,29 @@
+# Class 2 — Inference servers lab
+
+
+Commands below — same content as [COMMANDS.md](./COMMANDS.md).
+
+---
+
 # SETUP (once)
-cd class2
+cd module2-server
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=$PWD
 cp .env.example .env
-python scripts/download_gguf.py
-
-## Modal
 bash scripts/setup_modal.sh
 bash scripts/modal.sh deploy all
-
+python scripts/download_gguf.py
 
 # EVERY NEW TAB
-cd class2 && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd module2-server && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # WARM-UP
 python inference_101.py
 curl -s http://127.0.0.1:8081/health | jq
 docker compose --profile cpu up
 curl -s http://127.0.0.1:8000/healthz | jq
-docker compose --profile cpu down 
+docker compose --profile cpu down
 
 # MODAL ENV
 eval "$(bash scripts/modal.sh env naive-server)"
@@ -28,30 +32,12 @@ eval "$(bash scripts/modal.sh env relay-serve)"
 eval "$(bash scripts/modal.sh env litellm)"
 
 # PART 0
+bash scripts/modal.sh deploy all
 eval "$(bash scripts/modal.sh env naive-server)"
 curl -s "$MODAL_BASE_URL/healthz" | jq
 curl -s "$MODAL_BASE_URL/v1/chat/completions" \
   -H 'Content-Type: application/json' \
   -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}' | jq '.metrics'
-
-
-eval "$(bash scripts/modal.sh env llama-engine)"
-curl -s "$ENGINE_BASE_URL/v1/chat/completions" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}' | jq '.timings'
-
-eval "$(bash scripts/modal.sh env relay-serve)"
-curl -s "$RELAY_BASE_URL/v1/chat/completions" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}' 
-
-
-eval "$(bash scripts/modal.sh env litellm)"
-curl -s "$LITELLM_BASE_URL/chat/completions" \
-  -H 'Content-Type: application/json' \
-  -H 'x-litellm-api-key: Bearer sk-class2-demo' \
-  -d '{"model":"naive-local","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}' 
-
 
 # PART 1
 eval "$(bash scripts/modal.sh env naive-server)"
@@ -63,18 +49,21 @@ curl -s "$MODAL_BASE_URL/v1/chat/completions" \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Say hi"}],"max_tokens":8}' | jq
 
-# PART 3 — curl
+# PART 3 — T2 (curl)
 eval "$(bash scripts/modal.sh env naive-server)"
 curl -s "$MODAL_BASE_URL/healthz" | jq
 curl -sN "$MODAL_BASE_URL/v1/chat/completions" \
   -H 'Content-Type: application/json' \
   -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","messages":[{"role":"user","content":"Explain KV cache in one paragraph."}],"max_tokens":64,"stream":true}'
+curl -s "$MODAL_BASE_URL/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}' | jq '.metrics'
 
 # PART 3 — T3
 eval "$(bash scripts/modal.sh env naive-server)"
 python scripts/part5_observability.py --url "$METRICS_URL" --interval 1 --count 120
 
-# PART 3 — script
+# PART 3 — T2 (script)
 eval "$(bash scripts/modal.sh env naive-server)"
 python scripts/part3_break_server.py --base-url "$TARGET_URL"
 
@@ -96,6 +85,11 @@ python scripts/part5_observability.py --url "$METRICS_URL" --interval 1
 # PART 6
 eval "$(bash scripts/modal.sh env litellm)"
 python scripts/part6_litellm_demo.py
+
+# VERIFY / UTILS
+bash scripts/modal.sh verify all
+bash scripts/modal.sh compare
+bash scripts/modal.sh logs naive-server
 
 # AFTER CLASS
 bash scripts/modal.sh stop all

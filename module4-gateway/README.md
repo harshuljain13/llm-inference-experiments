@@ -3,7 +3,7 @@
 One GPU on Lambda. `--max-num-seqs 8` is the point — do not raise it.
 
 ```
-class7/
+module4-gateway/
   app.py          CrewAI client
   limiter.py      app-side rate limiter
   gateway/        Python package  (python -m gateway.main)
@@ -18,12 +18,12 @@ class7/
 
 # ON YOUR MAC
 
-Rsync first. SSH into an empty `~/class7` is a dead end — the lab is not on the GPU until `sync_to_lambda.sh` finishes.
+Rsync first. SSH into an empty `~/module4-gateway` is a dead end — the lab is not on the GPU until `sync_to_lambda.sh` finishes.
 
-Open a **new** terminal. `pwd` must end with `class-code/class7`.
+Open a **new** terminal. `pwd` must end with `module4-gateway`.
 
 ```
-cd class-code/class7
+cd module4-gateway
 pwd
 cp .env.example .env
 ```
@@ -48,7 +48,7 @@ Wait until it prints `Synced`. Then:
 bash setup/ssh.sh
 ```
 
-`setup/ssh.sh` reads `.env` itself and drops you on the GPU in `~/class7`. The prompt is `ubuntu@...`, not `jarvis@...`.
+`setup/ssh.sh` reads `.env` itself and drops you on the GPU in `~/module4-gateway`. The prompt is `ubuntu@...`, not `jarvis@...`.
 
 On Lambda, check the copy landed:
 
@@ -61,7 +61,7 @@ You must see `app.py`, `Makefile`, `gateway/`, `setup/`. If `ls` is empty, `exit
 Every time you change code, rsync again from the Mac before you expect Lambda to see it:
 
 ```
-cd class-code/class7
+cd module4-gateway
 bash setup/sync_to_lambda.sh
 ```
 
@@ -69,7 +69,7 @@ bash setup/sync_to_lambda.sh
 
 # ON LAMBDA — setup (once)
 
-Only after rsync. You are already in `~/class7` if you used `bash setup/ssh.sh`.
+Only after rsync. You are already in `~/module4-gateway` if you used `bash setup/ssh.sh`.
 
 ```
 bash setup/lambda_setup.sh
@@ -78,7 +78,7 @@ bash setup/lambda_setup.sh
 Every new Lambda tab:
 
 ```
-cd ~/class7 && source .venv/bin/activate
+cd ~/module4-gateway && source .venv/bin/activate
 ```
 
 ---
@@ -123,12 +123,12 @@ bash setup/launch_replicas.sh
 The gateway occupies the first tab, so the client needs its own. Open a **new terminal on your Mac** and SSH in again:
 
 ```
-cd class-code/class7
+cd module4-gateway
 bash setup/ssh.sh
 source .venv/bin/activate
 ```
 
-`setup/ssh.sh` already lands you in `~/class7`. Then:
+`setup/ssh.sh` already lands you in `~/module4-gateway`. Then:
 
 ```
 python app.py "What is KV cache?"
@@ -137,7 +137,7 @@ make test
 make bench
 ```
 
-`make bench` runs all four presets (baseline → route → queue → full) and writes `results.json` and `results.html` **on Lambda**, in `~/class7`.
+`make bench` runs all four presets (baseline → route → queue → full) and writes `results.json` and `results.html` **on Lambda**, in `~/module4-gateway`.
 
 ---
 
@@ -145,13 +145,13 @@ make bench
 
 The bench output lives on the GPU box. Copy it down before you terminate the instance — the instance is gone for good, and so are the results.
 
-On your **Mac**, from `class-code/class7`:
+On your **Mac**, from `module4-gateway`:
 
 ```
 set -a; source .env; set +a
 scp -i "$LAMBDA_SSH_KEY" \
-  "$LAMBDA:/home/ubuntu/class7/results.json" \
-  "$LAMBDA:/home/ubuntu/class7/results.html" .
+  "$LAMBDA:/home/ubuntu/module4-gateway/results.json" \
+  "$LAMBDA:/home/ubuntu/module4-gateway/results.html" .
 ```
 
 Then `open results.html`.

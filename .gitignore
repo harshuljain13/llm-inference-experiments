@@ -1,38 +1,33 @@
-# Instructor-only material (not in student repo clone).
-# Layout:
-#   extra/class1/  — Class 1 speaker notes, homework spec
-#   extra/class2/  — Class 2 instructor hub, speaker notes, deliverables rubric
-/extra/
+# Patterns here are deliberately path-independent (**/ or bare names) so that
+# renaming a module directory cannot silently disable an ignore rule.
 
 # Local env and secrets — never commit tokens
 .env
 .env.local
 .env.*.local
-class2/.env
-class2/secrets/*.env
-!class2/secrets/*.env.example
-class5/.env
-class5/.env.local
-class7/.env
-class7/.env.local
-class5/class5_with_outputs.pdf
-class5/class5_with_outputs.html
-class5/.venv/
-class7/llm-gateway-lab/.env
-class7/llm-gateway-lab/.venv/
-class7/llm-gateway-lab/results.json
-class7/llm-gateway-lab/results.html
-class7/llm-gateway-lab/.pytest_cache/
-class5/.ipynb_checkpoints/
-class5/**/__pycache__/
-class2/.modal_url
-class2/.modal_urls/
+**/secrets/*.env
+!**/secrets/*.env.example
 
-# Downloaded models (use scripts/download_gguf.py)
-class2/models/*.gguf
+# Personal deployment endpoints
+**/.modal_url
+**/.modal_urls/
+
+# Downloaded models (fetch with scripts/download_gguf.py)
+*.gguf
+*.safetensors
+*.bin
+
+# Generated artifacts — regenerate, don't commit
+**/results.json
+**/results.html
+**/*_with_outputs.pdf
+**/*_with_outputs.html
 
 # Python / tooling
-class2/.venv/
+.venv/
+venv/
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
+.pytest_cache/
 .DS_Store
