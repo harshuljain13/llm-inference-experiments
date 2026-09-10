@@ -124,12 +124,6 @@ Ships with four presets — `baseline` → `route` → `queue` → `full` — be
 **Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
 </details>
 
-### Projects
-
-| Project | What you build |
-|---|---|
-| [Mini LLM Serving System](projects/mini-serving-system.md) | Admission control, scheduler, and router against a simulated GPU — then all three connected. Includes postmortem-style scenarios modeled on real incidents. |
-
 ---
 
 ## 📊 Metrics Vocabulary
