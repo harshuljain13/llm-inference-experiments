@@ -29,40 +29,42 @@ fi
 
 echo "starting two replicas of $MODEL  (max-num-seqs=8, gpu-memory-utilization=0.35)"
 
-vllm serve "$MODEL" --port 8001 \
-  --gpu-memory-utilization 0.35 \
-  --max-num-seqs 8 \
-  --max-model-len 16384 \
-  --scheduling-policy priority \
-  --served-model-name lab &
-PID1=$!
+# Start one replica in the background, log to its own file, wait for /v1/models.
+# Sequential, not concurrent: two engines profiling GPU memory at the same time
+# race each other and one dies at engine-core init.
+start_replica() {
+  local port=$1
+  local log=/tmp/llm-gateway-lab-$port.log
 
-vllm serve "$MODEL" --port 8002 \
-  --gpu-memory-utilization 0.35 \
-  --max-num-seqs 8 \
-  --max-model-len 16384 \
-  --scheduling-policy priority \
-  --served-model-name lab &
-PID2=$!
+  vllm serve "$MODEL" --port "$port" \
+    --gpu-memory-utilization 0.35 \
+    --max-num-seqs 8 \
+    --max-model-len 16384 \
+    --scheduling-policy priority \
+    --served-model-name lab >"$log" 2>&1 &
+  local pid=$!
+  echo "$pid" > /tmp/llm-gateway-lab-$port.pid
+  echo "  :$port  pid $pid  log $log  — waiting (model download + compile can take minutes)"
 
-echo "$PID1" > /tmp/llm-gateway-lab-8001.pid
-echo "$PID2" > /tmp/llm-gateway-lab-8002.pid
-echo "pids $PID1 $PID2  — waiting for /v1/models (model download can take several minutes)"
+  for _ in $(seq 1 180); do
+    if curl -sf "http://127.0.0.1:$port/v1/models" >/dev/null 2>&1; then
+      echo "  :$port  ready"
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "  :$port  DIED during startup — last 40 lines of $log:" >&2
+      tail -40 "$log" >&2
+      return 1
+    fi
+    sleep 2
+  done
 
-ok=0
-for i in $(seq 1 180); do
-  if curl -sf http://127.0.0.1:8001/v1/models >/dev/null 2>&1 \
-     && curl -sf http://127.0.0.1:8002/v1/models >/dev/null 2>&1; then
-    ok=1
-    break
-  fi
-  sleep 2
-done
+  echo "  :$port  not ready after 6 minutes — see $log" >&2
+  return 1
+}
 
-if [[ "$ok" -ne 1 ]]; then
-  echo "replicas did not become ready in 6 minutes"
-  exit 1
-fi
+start_replica 8001
+start_replica 8002
 
 echo "replicas ready on :8001 and :8002"
 echo "next:  bash setup/smoke_test.sh"

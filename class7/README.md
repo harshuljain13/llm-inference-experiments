@@ -2,8 +2,6 @@
 
 One GPU on Lambda. `--max-num-seqs 8` is the point — do not raise it.
 
-Walk the stack and what you should see: [class7.md](./class7.md).
-
 ```
 class7/
   app.py          CrewAI client
@@ -34,9 +32,11 @@ Put your values in `.env` (never commit it):
 
 ```
 export LAMBDA=ubuntu@YOUR_LAMBDA_IP
-export LAMBDA_SSH_KEY=$HOME/.ssh/YOUR_LAMBDA_KEY
+export LAMBDA_SSH_KEY=$HOME/.ssh/id_ed25519_lambda
 export HF_TOKEN=hf_xxxx
 ```
+
+`LAMBDA_SSH_KEY` is the **private** key — the file with no `.pub` extension. `ls ~/.ssh` to find yours. If SSH complains the key is too open: `chmod 600 ~/.ssh/id_ed25519_lambda`.
 
 ```
 bash setup/sync_to_lambda.sh
@@ -92,32 +92,80 @@ make smoke
 python -m gateway.main --replicas http://127.0.0.1:8001,http://127.0.0.1:8002
 ```
 
-Other Lambda tab:
+`launch_replicas.sh` brings the replicas up **one at a time** — 8001 must answer `/v1/models` before 8002 starts. Two vLLM engines profiling GPU memory at the same time race each other and one dies at engine-core init. First launch is slow (model download + compile, several minutes per replica); that is normal.
 
-how to create another lambda tab?
+Each replica logs to its own file, not to your terminal:
 
 ```
-cd .../class7
+/tmp/llm-gateway-lab-8001.log
+/tmp/llm-gateway-lab-8002.log
+```
+
+Leave `gateway.main` running in this tab. It holds the terminal.
+
+### If a replica fails to start
+
+`make smoke` printing `FAIL :8001` and `PASS :8002` means one engine died. The launcher already tailed that replica's log for you; the real error is in there, above the `Engine core initialization failed` traceback.
+
+Clear the GPU and retry — a dead replica's sibling is still holding memory:
+
+```
+pkill -f "vllm serve" ; sleep 5 ; nvidia-smi
+bash setup/launch_replicas.sh
+```
+
+`nvidia-smi` must show ~0 MiB in use before you relaunch. If it still fails: drop both replicas to `--gpu-memory-utilization 0.30`, or clear a stale compile cache with `rm -rf ~/.cache/vllm`.
+
+---
+
+# ON LAMBDA — second tab
+
+The gateway occupies the first tab, so the client needs its own. Open a **new terminal on your Mac** and SSH in again:
+
+```
+cd class-code/class7
 bash setup/ssh.sh
-ssh lambda
-cd ~/class7 && source .venv/bin/activate
+source .venv/bin/activate
 ```
-we need to run this
+
+`setup/ssh.sh` already lands you in `~/class7`. Then:
 
 ```
-cd ~/class7 && source .venv/bin/activate
 python app.py "What is KV cache?"
 
 make test
 make bench
 ```
 
+`make bench` runs all four presets (baseline → route → queue → full) and writes `results.json` and `results.html` **on Lambda**, in `~/class7`.
+
+---
+
+# PULL RESULTS BACK TO YOUR MAC
+
+The bench output lives on the GPU box. Copy it down before you terminate the instance — the instance is gone for good, and so are the results.
+
+On your **Mac**, from `class-code/class7`:
+
+```
+set -a; source .env; set +a
+scp -i "$LAMBDA_SSH_KEY" \
+  "$LAMBDA:/home/ubuntu/class7/results.json" \
+  "$LAMBDA:/home/ubuntu/class7/results.html" .
+```
+
+Then `open results.html`.
+
 ---
 
 # TEAR DOWN
 
+Copy `results.json` / `results.html` down first (above) — terminating the instance destroys them.
+
 ```
 kill $(cat /tmp/llm-gateway-lab-8001.pid /tmp/llm-gateway-lab-8002.pid)
 ```
+
+If that leaves anything behind: `pkill -f "vllm serve"`, then confirm with `nvidia-smi`.
 
 Then terminate the instance in the Lambda console.
