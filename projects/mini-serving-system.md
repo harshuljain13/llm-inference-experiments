@@ -1,587 +1,283 @@
 # Mini LLM Serving System
 
-> Capstone project brief. Build admission control, a scheduler, and a router against a simulated GPU, then connect them.
+> **Capstone project.** Build admission control, a scheduler, and a router against a simulated GPU — then connect all three and prove the whole thing holds under overload.
 >
-> Companion to [Class 7](../class7/overview.md), which implements the same three decisions against real vLLM replicas.
+> Companion to [Class 7](../class7/overview.md), which makes the same three decisions against real vLLM replicas.
 
+**No model. No GPU.** Everything is simulated, which is exactly the point: you can sweep load, inject failures, and rewind the clock for free.
 
-### Extra class
-If you understand the code, try this
-Mini LLM Serving Syste
+---
 
+## The One Idea
 
-The entire assignment is about one idea: The GPU is scarce. Decide carefully what work enters, what work runs next, and where it runs. Then measure whether your decisions actually helped.
+> **The GPU is scarce.** Decide carefully what work enters, what runs next, and where it runs. Then measure whether your decisions actually helped.
 
+Imagine 100 users hitting a server with limited capacity. Your system answers three questions:
 
+| Question | Component | File |
+|---|---|---|
+| Should I accept this request? | **Admission control** | `admit.py` |
+| Which request runs next? | **Scheduler** | `sched.py` |
+| Which worker gets it? | **Router** | `router.py` |
+| *All three, wired together* | **Integration** | `serve.py` |
 
-For your final project, you will build this with real models and on actual GPUs
+---
 
+## The Simulated World
 
+**Every request carries:**
 
-You are going to build a fake LLM serving system. There is no real model and no GPU. Imagine 100 users sending requests to an LLM server, but your server has limited capacity. Your system has to answer three questions:
+| Field | Meaning |
+|---|---|
+| `id` | request identifier |
+| `arrival_t` | when it showed up |
+| `priority` | `0` = interactive, `20` = batch |
+| `prompt_tokens` | input size |
+| `max_new_tokens` | maximum output size |
+| `prefix_hash` | identifies shared input, or `None` |
+| `timeout_s` | how long the user will wait |
+| `tenant` | customer / user group |
 
-Should I accept this request? → Admission control
+**Your server has three scarce resources:**
 
-Which request should run next? → Scheduler
+| Resource | Meaning |
+|---|---|
+| `decode_slots` | how many requests can generate tokens at once |
+| `KV blocks` | memory available to running requests |
+| `prefill tokens` | how much input can be processed per step |
 
-Which worker/GPU should receive it? → Router
+Every rule you write below exists to protect one of these three.
 
-Finally, you will connect all three and test the complete system.
+---
 
+## Part 1 — Admission Control
 
+**File:** `admit.py` · **Question:** *is the server too busy to safely accept this?*
 
-The request
-Every request has:
+```python
+should_shed(req, snap) -> (shed: bool, code: int, retry_after_s: int)
+```
 
+### Write these tests first
 
-JavaScript
-id
-arrival_t
-priority          # 0 = important/interactive, 20 = batch
-prompt_tokens     # size of the input
-max_new_tokens    # maximum output size
-prefix_hash       # identifies shared input, or None
-timeout_s         # how long the user is willing to wait
-tenant            # customer/user group
+| Situation | Expected result |
+|---|---|
+| Tenant used 96% of **token** allowance | reject `429` |
+| Tenant used 96% of **request** allowance | reject `429` |
+| Request would likely wait > half its timeout | reject `503`/`529` |
+| Only 5% KV remains, **new** prefix | reject `503`/`529` |
+| Only 5% KV remains, prefix **already cached** | **accept** |
+| Very bad tail latency, **interactive** request | **accept** |
+| Very bad tail latency, **batch** request | reject |
 
-Your fake server has limited:
+The two "accept" rows are the interesting ones. They're what stops this from being a blunt load shedder.
 
+### Then implement these rules
 
-JavaScript
-decode_slots      # how many requests can generate tokens at once
-KV blocks         # memory available for running requests
-prefill tokens    # how much input we can process per step
+**1 · Protect tenants.** Check the tenant's *token* limit before its *request-count* limit.
+> Ten requests are not necessarily ten times the work. Counting requests lets one tenant smuggle in enormous jobs.
 
-Think of these as the server's three scarce resources.
+**2 · Don't accept doomed requests.**
+```text
+expected_queue_wait = queue_length × p50_TTFT
+```
+If that exceeds **half** the request's timeout, reject it now. A refusal at t=0 beats a timeout at t=5s — the refused request never consumed KV.
 
+**3 · Don't run out of KV memory.** If less than **8%** of KV remains, reject requests whose prefix is *not* cached. A request reusing an existing prefix costs far less memory, so let it in.
 
+**4 · Protect interactive users.** If `p99 > 4 × p50` **and** the queue is growing:
+- keep `priority < 10`
+- reject `priority >= 10`
 
-This exercise has 4 parts.
+> **Scope:** admission control only says accept or reject. It does **not** retry or reroute.
 
+### Status codes
 
+| Code | Means |
+|---|---|
+| `429` | tenant limit — *you* asked for too much |
+| `503` / `529` | server capacity — *we* have no room |
 
-Part 1. Admission Control - Should we accept the request?
-File: admit.py
+Getting this wrong is a real production bug: a `429` tells the client to slow down, a `503` tells it to retry elsewhere.
 
-Write:
+### Short answer (≈ ½ page)
 
+Explain which of your rules embodies the thinking behind:
+- DALL·E's 5-minute cancellation
+- Anthropic's late-capacity behavior
+- Cloudflare overload protection
 
-Python
-should_shed(req, snap)
+---
 
-It answers:
+## Part 2 — Scheduler
 
-"Is the server too busy to safely accept this request?"
+**File:** `sched.py` · **Question:** *which accepted request gets the GPU next?*
 
-Return:
-
-
-JavaScript
-(shed?, code, retry_after_seconds)
-
-
-
-First: write these tests
-
-
-Your tests must show:
-
-
-
-
-JavaScript
-| Situation | Result |
-| :--- | :--- |
-| Tenant has used 96% of token allowance | reject with 429 |
-| Tenant has used 96% of request allowance | reject with 429 |
-| Request would probably wait > half its timeout | reject with 503/529 |
-| Only 5% KV memory remains + new prefix | reject with 503/529 |
-| Only 5% KV memory remains + prefix already exists | accept |
-| Very bad tail latency + interactive request | accept |
-| Very bad tail latency + batch request | reject |
-
-
-Then implement these rules
-
-
-1. Protect tenants.
-
-Check the tenant's token limit before its request-count limit.
-
-Why? Ten requests are not necessarily ten times the same amount of work.
-
-
-
-2. Don't accept requests that are already doomed.
-
-Estimate:
-
-
-JavaScript
-expected queue wait = queue length × p50 TTFT
-
-If that is more than half of the request's timeout, reject it.
-
-
-
-3. Don't run out of KV memory.
-
-If less than 8% of KV memory remains, reject a request whose prefix is not already cached. A request using a prefix we already have is allowed in.
-
-
-
-4. Protect interactive users.
-
-If p99 latency is more than 4× p50 latency and the queue is growing:
-
-keep priority < 10 requests;
-
-reject priority >= 10 requests.
-
-Important: admission control does not retry requests or move them to another worker. It only says accept or reject.
-
-
-
-Use:
-
-
-JavaScript
-429 = tenant limit
-503/529 = server capacity
-
-Short question
-In about ½ page, explain which of your rules represents the ideas behind:
-
-DALL·E's 5-minute cancellation,
-
-Anthropic's late-capacity behavior,
-
-Cloudflare overload protection.
-
-
-
-Part 2. Scheduler - Which request gets the GPU?
-File: sched.py
-
-
-
-Now pretend a request has been accepted. And your fake GPU can only do a limited amount of work per step.
-
-
-
-Write:
-
-
-Python
+```python
 step(waiting, running, budget)
+```
 
-Each call to step() means: "The GPU gets one more chance to do work."
+Each `step()` call is one chance for the GPU to do work.
 
+### Policies
 
+Support three: `fcfs`, `priority`, `drr`.
 
-You must support three ways of choosing requests:
+For `priority`: `0` before `20`; ties broken by arrival time.
 
+### Rules
 
-JavaScript
-fcfs
-priority
-drr
+**1 · Chunked prefill.** A 32,000-token prompt against a 2,048-token budget does **not** get processed at once. Take at most 2,048 this step and continue later.
 
-So:
+**2 · Don't let one huge prompt block decoding.** After at most *one* prefill chunk, spend the remaining budget on requests already decoding.
+```text
+one prefill chunk  →  remaining capacity goes to decode
+```
 
+**3 · Preempt, don't swap.** When KV runs out, stop the lowest-priority running request, **throw away its KV**, and return it to the waiting queue. It recomputes its prompt when it runs again. Count `preempts` and `wasted_decode_tokens`.
 
-JavaScript
-priority 0 → before priority 20
+**4 · Honor aborts.** When `req.aborted == True`, remove it immediately, free its KV, generate nothing more. Count `aborted_freed`.
 
-If priorities are equal, use arrival time.
+### The workload
 
+Build `traces/mixed.jsonl`:
 
+| Share | Class | Priority | Prompt | Output |
+|---|---|---|---|---|
+| 70% | interactive | 0 | 200–800 | 64–256 |
+| 20% | batch | 20 | 2,000–8,000 | 512–2,048 |
+| 10% | shared-prefix agents | — | 4,000 (3,500 shared) | — |
 
-Rules to add on scheduler:
+Run **60 simulated seconds** under FCFS, Priority, and DRR.
 
-Don't process huge prompts all at once: If a request has a 32,000-token prompt but the step budget is 2,048, do not process all 32,000 tokens at once. Process at most 2,048 this step and continue later. This is chunked prefill.
+### Measure
 
-Don't let one huge prompt block decodingAfter processing at most one prefill chunk, use the remaining capacity for requests that are already decoding. In other words:
+`completed/s` · `interactive p99 TTFT` · `batch p99 TTFT` · `preempts/s` · `wasted decode tokens` · `requests rejected`
 
+**Answer:** which scheduler wastes the most decode work, and why? (one paragraph)
 
-JavaScript
-one prefill chunk
-        ↓
-use whatever remains for decoding
+---
 
+## Part 3 — Router
 
+**File:** `router.py` · **Question:** *which worker should receive this?*
 
-If KV memory runs out, preempt i.e. stop the lowest-priority running request. Throw away its KV memory and put it back into the waiting queue. When it runs again, it has to recompute its prompt. This is intentionally preempt, don't swap.
-
-Count:
-
-
-JavaScript
-preempts
-wasted_decode_tokens
-
-
-If the client disconnects,
-
-
-Python
-req.aborted == True
-
-then, remove it immediately. Free its KV memory and do not generate any more tokens for it.
-
-
-
-Count:
-
-
-JavaScript
-aborted_freed
-
-
-
-
-
-Now, run this workload
-Create:
-
-
-JavaScript
-traces/mixed.jsonl
-
-containing:
-
-
-JavaScript
-70% interactive
-  priority 0
-  prompt: 200–800
-  output: 64–256
-
-20% batch
-  priority 20
-  prompt: 2,000–8,000
-  output: 512–2,048
-
-10% shared-prefix agents
-  same prefix
-  prompt: 4,000
-  3,500 tokens are shared
-
-Run for 60 simulated seconds using:
-
-
-JavaScript
-FCFS
-Priority
-DRR
-
-Measure:
-
-
-JavaScript
-completed requests / second
-interactive p99 TTFT
-batch p99 TTFT
-preempts / second
-wasted decode tokens
-requests rejected
-
-Answer:
-Which scheduler wastes the most decode work? Explain why in one paragraph.
-
-
-
-Part 3. Router - Which worker/GPU should get the request?
-
-
-File: router.py
-
-
-
-Now create two fake workers:
-
-
-JavaScript
-Worker A
-Worker B
-
-Each worker tells you:
-
-
-JavaScript
-how much KV memory is free
-how many requests are running
-how many are waiting
-which prefixes it has cached
-its p99 latency
-whether it is healthy
-
-Write:
-
-
-Python
+```python
 pick(req, workers)
+```
 
-It chooses where the request goes.
+Two fake workers, A and B. Each reports: free KV, running count, waiting count, cached prefixes, p99 latency, health.
 
-Support:
+**Strategies:** `random` · `least_loaded` · `p2c` · `prefix_then_load`
 
+### Safety rules
 
-JavaScript
-random
-least_loaded
-p2c
-prefix_then_load
+**H6 · Unknown ≠ idle.** If a worker is unhealthy or its load is unknown, do **not** treat it as empty. Use unknown workers only when *all* workers are unknown.
+> Missing telemetry looks identical to zero load. Systems that confuse the two route everything at the one worker that stopped reporting — because it crashed.
 
-
-
-Add 3 safety rules to your router:
-
-Missing information does NOT mean zero load: If a worker is unhealthy or its load score is unknown:
-
-
-JavaScript
-unknown ≠ idle
-
-Only use unknown workers if all workers are unknown. This is H6.
-
-
-
-Don't bounce an overloaded request foreverBefore choosing a worker, check whether each worker would reject the request using your L1 admission logic.
-
-
-
-If both workers reject it:
-
-
-JavaScript
+**H4 · Don't bounce an overloaded request.** Before choosing, check whether each worker would reject via your Part 1 logic. If both reject:
+```python
 return Shed(503, retry_after=2)
+```
+Never loop A → B → A → B. Failover under global overload multiplies the load instead of relieving it.
 
-Do not go A → B → A → B.
+### Experiments
 
-This is H4.
+| Trace | Setup | Question |
+|---|---|---|
+| **T1** | no shared prefixes | Does P2C balance better than random? |
+| **T2** | 40% share one prefix | Does prefix-aware routing save KV? |
+| **T3** | worker B's telemetry is 15s stale, claims "empty" while busy | Does `least_loaded` overload B — and does H6 prevent it? |
 
+**T2 target:**
+```text
+KV(prefix_then_load)  <  0.4 × KV(least_loaded)
+```
 
+**Report for all four strategies:** p99 TTFT · KV allocated · shed % · traffic sent to stale B
 
-Router experiments:
+---
 
+## Part 4 — Integration
 
-Run three traces.
+**File:** `serve.py`
 
-T1 - No shared prefixes
-Every request has a different prefix.
-
-Question: Does P2C balance load better than random?
-
-T2 - Lots of shared prefixes
-40% of requests share one prefix.
-
-Question: Does prefix-aware routing save KV memory?
-
-You should see approximately:
-
-
-JavaScript
-KV(prefix_then_load)
-    <
-0.4 × KV(least_loaded)
-
-T3 - Bad/stale information
-Make worker B's information 15 seconds old.
-
-Its cached information says:
-
-
-JavaScript
-"B is empty"
-
-even though B is actually busy.
-
-Show that least_loaded can send too much traffic to B.
-
-Then show that your unknown/stale-telemetry handling prevents this mistake.
-
-Report:
-
-
-JavaScript
-p99 TTFT
-KV allocated
-shed %
-traffic sent to stale B
-
-for all four routing strategies.
-
-
-
-Part 4. Put everything together
-File: serve.py
-
-Your complete system should behave like:
-
-
-JavaScript
+```text
 client
    ↓
-Should we accept it?
+admit()     should we accept it?
    ↓
-admit()
-   ↓
-Which worker?
-   ↓
-pick()
+pick()      which worker?
    ↓
 worker queue
    ↓
-GPU step
-   ↓
-step()
+step()      GPU does work
+```
 
-Use:
+One process · two fake workers · one simulated clock.
 
-one process;
+---
 
-two fake workers;
+## Deliverables
 
-one simulated clock.
-
-
-
-Submit
-
-JavaScript
+```text
 admit.py
 sched.py
 router.py
 serve.py
-
-tests/ (only if you are doing advanced)
 traces/
 plots/soak.png
+tests/            (advanced track only)
+REPORT.pdf        ≤ 2 pages — tables with short explanations
+```
 
-REPORT.pdf       # ≤ 2 pages (all tables with short explanations)
+---
 
+## Self-Check
 
+You should be able to point at a line of code for each:
 
-By the end of this, you should be able to answer these
-Where do I prevent accepting work that will time out?
+- [ ] Where do I prevent accepting work that will time out?
+- [ ] Where do I protect KV memory?
+- [ ] Where do I prioritize interactive traffic?
+- [ ] Where do I stop one tenant monopolizing the GPU?
+- [ ] Where do I preempt a request?
+- [ ] Where do I exploit shared prefixes?
+- [ ] Where do I handle missing worker telemetry?
+- [ ] Where do I stop failover from making overload worse?
 
-Where do I protect KV memory?
+---
 
-Where do I prioritize interactive traffic?
+## Advanced Track
 
-Where do I prevent one tenant from monopolizing the GPU?
+> These reproduce real postmortems from OpenAI, Anthropic, and Cloudflare. The question is whether you can fix them the way those engineering teams did.
 
-Where do I preempt a request?
+### 1 · DALL·E soak
 
-Where do I exploit shared prefixes?
+Set `timeout = 5s`, `p50 job time = 2s`. Keep offering load until estimated queue wait passes 2.5s.
 
-Where do I handle missing worker telemetry?
+**Requirement:** shedding must begin *before* completions fall to zero.
 
-Where do I stop failover from making overload worse?
+Produce `plots/soak.png` showing **admitted**, **completed**, and **shed** over time.
 
-=
+### 2 · Worker failure and recovery
 
+Kill worker B → admission should drop. Bring B back → ramp admission 10% → 100% over 30s.
 
+Continue ramping **only while** `p99 TTFT < 2 × baseline`. If it exceeds that, stop ramping and shed.
+> This is why recovery is gradual. Restoring full traffic instantly re-kills the worker that just came back.
 
-Advanced:
+### 3 · Correct error code
 
+| Condition | Must return | Must NOT return |
+|---|---|---|
+| Tenant over token limit, fleet empty | `429` | `503` |
+| Fleet out of KV, tenant under limit | `503`/`529` | `429` |
 
-These tests basically test you on real postmortems within OpenAI, Anthropic and if you can fix the problems like their engineering teams do
+### 4 · Prefix stickiness
 
+On T2: `KV(prefix_then_load) < 0.4 × KV(least_loaded)`
 
+### 5 · Abort
 
-1. DALL·E soak
-Set:
-
-
-JavaScript
-timeout = 5 seconds
-p50 job time = 2 seconds
-
-Keep sending requests until estimated queue wait exceeds 2.5 seconds. Your system must start shedding before completed requests fall to zero.
-
-
-
-Create:
-
-
-JavaScript
-plots/soak.png
-
-showing:
-
-
-JavaScript
-admitted
-completed
-shed
-
-over time.
-
-
-
-2. Worker failure and recovery
-Kill worker B.
-
-→ Admission should decrease.
-
-Bring B back.
-
-→ Gradually increase admission from 10% to 100% over 30 seconds.
-
-Only continue increasing while:
-
-
-JavaScript
-p99 TTFT < 2 × baseline
-
-If latency exceeds that:
-
-→ stop increasing and shed traffic.
-
-
-
-3. Correct error code
-Tenant over token limit + empty fleet:
-
-
-JavaScript
-429
-
-NOT 503.
-
-Fleet out of KV + tenant under its limit:
-
-
-JavaScript
-503/529
-
-NOT 429.
-
-
-
-4. Prefix stickiness
-On T2:
-
-
-JavaScript
-prefix_then_load KV
-    <
-0.4 × least_loaded KV
-
-
-
-5. Abort
-Abort a request during decoding.
-
-The next step() must:
-
-free its KV;
-
-increment aborted_freed;
-
-generate zero additional tokens.
-
-
-
+Abort a request mid-decode. The next `step()` must free its KV, increment `aborted_freed`, and generate **zero** further tokens.

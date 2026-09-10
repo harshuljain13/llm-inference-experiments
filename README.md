@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>LLM Inference Experiments</strong>
+  <img src="assets/banner.svg" alt="LLM Inference Experiments" width="100%">
 </p>
 
 <p align="center">
