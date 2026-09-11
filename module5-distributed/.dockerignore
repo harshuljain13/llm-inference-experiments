@@ -1,0 +1,13 @@
+.venv
+venv
+__pycache__
+*.py[cod]
+.git
+.gitignore
+third_party
+.ipynb_checkpoints
+*.nsys-rep
+*.qdrep
+.DS_Store
+.env
+.env.*

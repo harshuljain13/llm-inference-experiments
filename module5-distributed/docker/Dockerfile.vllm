@@ -1,0 +1,19 @@
+ARG RAY_BASE=rayproject/ray:2.40.0-py311-cu121
+FROM ${RAY_BASE}
+
+USER root
+WORKDIR /app
+
+COPY requirements-docker-gpu.txt .
+RUN pip install --no-cache-dir -r requirements-docker-gpu.txt
+
+COPY . .
+
+ENV PLAYGROUND_BACKEND=vllm
+ENV RAY_DEDUP_LOGS=0
+
+COPY docker/entrypoint-vllm.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000 8265
+ENTRYPOINT ["/entrypoint.sh"]

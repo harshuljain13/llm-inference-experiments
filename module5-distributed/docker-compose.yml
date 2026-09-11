@@ -1,0 +1,57 @@
+services:
+  llama:
+    profiles: ["cpu"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.llama
+      args:
+        LLAMA_RELEASE_TAG: "${LLAMA_RELEASE_TAG:-b8665}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - "${MODEL_DIR:-./models}:/models:ro"
+    environment:
+      LLAMA_MODEL_PATH: "${LLAMA_MODEL_PATH:-/models/model.gguf}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/v1/models >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+
+  gateway:
+    profiles: ["cpu"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway
+    ports:
+      - "8000:8000"
+    environment:
+      PLAYGROUND_BACKEND: llamaserver
+      LLAMASERVER_BASE_URL: http://llama:8080
+      RAY_NUM_CPUS: "${RAY_NUM_CPUS:-2}"
+    depends_on:
+      llama:
+        condition: service_healthy
+
+  playground-vllm:
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vllm
+      args:
+        RAY_BASE: "${RAY_BASE:-rayproject/ray:2.40.0-py311-cu121}"
+    ports:
+      - "8000:8000"
+      - "8265:8265"
+    environment:
+      PLAYGROUND_BACKEND: vllm
+      PLAYGROUND_PRESET: "${PLAYGROUND_PRESET:-tiny_single}"
+      PLAYGROUND_MODEL_KEY: "${PLAYGROUND_MODEL_KEY:-tinyllama}"
+      HUGGING_FACE_HUB_TOKEN: "${HUGGING_FACE_HUB_TOKEN:-}"
+      RAY_NUM_CPUS: "${RAY_NUM_CPUS:-4}"
+      RAY_NUM_GPUS: "${RAY_NUM_GPUS:-1}"
+    gpus:
+      - driver: nvidia
+        count: all
+        capabilities: [gpu]

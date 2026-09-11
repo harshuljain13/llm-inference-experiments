@@ -1,0 +1,20 @@
+FROM python:3.11-slim-bookworm
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-docker-cpu.txt .
+RUN pip install --no-cache-dir -r requirements-docker-cpu.txt
+
+COPY serve_app.py config.py llamacpp_backend.py llamaserver_proxy_backend.py serve_config.yaml ./
+
+ENV PLAYGROUND_BACKEND=llamaserver
+ENV LLAMASERVER_BASE_URL=http://llama:8080
+ENV RAY_DEDUP_LOGS=0
+
+COPY docker/entrypoint-gateway.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]

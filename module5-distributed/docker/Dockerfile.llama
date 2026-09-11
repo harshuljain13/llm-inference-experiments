@@ -1,0 +1,29 @@
+FROM ubuntu:22.04
+ARG DEBIAN_FRONTEND=noninteractive
+ARG LLAMA_RELEASE_TAG=b8665
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) SUFFIX=ubuntu-x64 ;; \
+      arm64) SUFFIX=ubuntu-arm64 ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH (need amd64 or arm64)"; exit 1 ;; \
+    esac; \
+    curl -fsSL \
+      -H "User-Agent: docker-llama-fetch" \
+      -o /tmp/llama.tgz \
+      "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_RELEASE_TAG}/llama-${LLAMA_RELEASE_TAG}-bin-${SUFFIX}.tar.gz"; \
+    mkdir -p /opt/llama; \
+    tar xzf /tmp/llama.tgz -C /opt/llama; \
+    BIN="$(find /opt/llama -type f -name llama-server | head -1)"; \
+    test -n "$BIN"; \
+    install -m 0755 "$BIN" /usr/local/bin/llama-server; \
+    rm -rf /tmp/llama.tgz
+
+ENV LLAMA_MODEL_PATH=/models/model.gguf
+EXPOSE 8080
+ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/llama-server -m \"${LLAMA_MODEL_PATH}\" --host 0.0.0.0 --port 8080"]
