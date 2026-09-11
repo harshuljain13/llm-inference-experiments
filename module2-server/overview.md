@@ -1,6 +1,6 @@
-# Module 2 — Server: Build, Break, Observe
+# Module 2 — Inference Server and Gateway
 
-> Course **class 2**. Wrap a model in HTTP, then break it with concurrency.
+> Course **class 2**. The four layers — model → engine → server → gateway — and which layer owns which problem.
 
 **One sentence:** Wrap a model in an HTTP server the obvious way, break it with concurrency, then compare it against a real engine and a gateway — learning the four-layer stack **model → engine → server → gateway**.
 

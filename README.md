@@ -64,7 +64,7 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
 | Lab | Layer | The question it answers | GPU | Overview |
 |---|---|---|---|---|
 | **[module1-model](module1-model/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](module1-model/overview.md) |
-| **[module2-server](module2-server/)** | Server | What breaks under concurrency, and at which layer? | Optional | [overview](module2-server/overview.md) |
+| **[module2-server](module2-server/)** | Server + Gateway | Which layer owns which problem? | Optional | [overview](module2-server/overview.md) |
 | **[module3-engine](module3-engine/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](module3-engine/overview.md) |
 | **[module4-gateway](module4-gateway/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module4-gateway/overview.md) |
 | **[module5-distributed](module5-distributed/)** | Multi-GPU | Split the model or replicate it? | **Yes** | [overview](module5-distributed/overview.md) |
@@ -128,7 +128,7 @@ A single notebook. Times the two phases of an LLM call separately and shows they
 </details>
 
 <details>
-<summary><strong>module2-server — Build, Break, Observe a Server</strong></summary>
+<summary><strong>module2-server — Inference Server and Gateway</strong></summary>
 
 Wrap a model in FastAPI the obvious way, then break it with concurrency. Compares four systems under identical load: a naive server, llama.cpp as a real engine, a batching proxy, and a routing gateway. The naive server is bad *on purpose* — a global model lock, no batching, no backpressure.
 
