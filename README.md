@@ -53,140 +53,31 @@ pip install -r requirements.txt
 python -m smol_vllm.demo          # paged KV, scheduling, preemption
 ```
 
-New here? Read [`module1-prefill-vs-decode/overview.md`](module1-prefill-vs-decode/overview.md) first. Every lab has an `overview.md` that maps the files and explains the concept before you run anything.
+New here? Start with [module 1](module1-prefill-vs-decode/overview.md).
 
 ---
 
 ## 🧭 The Experiments
 
-Each lab moves one layer up the stack. Read the `overview.md`, then run the code.
+Six modules, bottom-up. Each `overview.md` maps that module's files and explains the concept before you run anything.
 
-| Lab | Layer | The question it answers | GPU | Overview |
-|---|---|---|---|---|
-| **[module1-prefill-vs-decode](module1-prefill-vs-decode/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](module1-prefill-vs-decode/overview.md) |
-| **[module2-server-and-gateway](module2-server-and-gateway/)** | Server + Gateway | Which layer owns which problem? | Optional | [overview](module2-server-and-gateway/overview.md) |
-| **[module3-build-your-own-engine](module3-build-your-own-engine/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](module3-build-your-own-engine/overview.md) |
-| **[module4-observability-and-cost](module4-observability-and-cost/)** | Production | What does the whole stack cost, and where does time go? | **Yes** | [overview](module4-observability-and-cost/overview.md) |
-| **[module5-multi-gpu-scaling](module5-multi-gpu-scaling/)** | Multi-GPU | Split the model or replicate it? | **Yes** | [overview](module5-multi-gpu-scaling/overview.md) |
-| **[module6-admission-and-routing](module6-admission-and-routing/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module6-admission-and-routing/overview.md) |
+| # | Module | Was | What it covers | Question it answers | GPU |
+|---|---|---|---|---|---|
+| 1 | [**prefill-vs-decode**](module1-prefill-vs-decode/overview.md) | class 1 | prefill vs decode · KV cache · why output tokens cost more | Why is decode slow and prefill fast? | optional |
+| 2 | [**server-and-gateway**](module2-server-and-gateway/overview.md) | class 2 | model → engine → server → gateway · why naive servers melt | Which layer owns which problem? | optional |
+| 3 | [**build-your-own-engine**](module3-build-your-own-engine/overview.md) | class 5 | paged KV blocks · continuous batching · preemption livelock | How is KV memory paged and work scheduled? | none |
+| 4 | [**observability-and-cost**](module4-observability-and-cost/overview.md) | class 3 | Prometheus + Grafana · engine-flag A/B · $ per request | Where does time go, and what does it cost? | yes |
+| 5 | [**multi-gpu-scaling**](module5-multi-gpu-scaling/overview.md) | class 6 | tensor / pipeline / data parallel · Ray Serve | Split the model, or replicate it? | yes |
+| 6 | [**admission-and-routing**](module6-admission-and-routing/overview.md) | class 7 | admission control · deadline-ordered queue · prefix routing | Who gets in, in what order, on which GPU? | yes |
 
-### The stack, assembled
+**Reading order:** measure before you optimize (4), scale out once one GPU isn't enough (5), then govern the fleet you now have (6). Modules 1–3 are CPU-friendly — start there.
 
-```
-   module1-prefill-vs-decode       prefill vs decode · KV cache · why output tokens cost more
-        ↓
-   module2-server-and-gateway      model → engine → server → gateway · why naive servers melt
-        ↓
-   module3-build-your-own-engine   paged KV blocks · continuous batching · preemption livelock
-        ↓
-   module4-observability-and-cost  instrument the whole stack · engine flag A/B · $ per request
-        ↓
-   module5-multi-gpu-scaling       tensor / pipeline / data parallel · when each is worth it
-        ↓
-   module6-admission-and-routing   admission control · deadline-ordered queue · prefix routing
-```
-
-You measure before you optimize (4), scale out once one GPU isn't enough (5), then govern the fleet you now have (6).
-
-### Where did each module come from?
-
-<details>
-<summary><strong>Provenance — course class / source repo → module</strong></summary>
-
-Modules are numbered sequentially. If you're looking for "class 7" or one of the standalone repos, it's here:
-
-| Was | Now | Why it moved |
-|---|---|---|
-| `class1` | [`module1-prefill-vs-decode`](module1-prefill-vs-decode/) | renumbered |
-| `class2` | [`module2-server-and-gateway`](module2-server-and-gateway/) | renumbered |
-| `class5` | [`module3-build-your-own-engine`](module3-build-your-own-engine/) | renumbered |
-| `class3` — `fullstack-inferencing` repo | [`module4-observability-and-cost`](module4-observability-and-cost/) | absorbed via `git subtree` |
-| `class6` — `ray_project` repo | [`module5-multi-gpu-scaling`](module5-multi-gpu-scaling/) | absorbed via `git subtree` |
-| `class7` | [`module6-admission-and-routing`](module6-admission-and-routing/) | renumbered |
-
-Only course class 4 had no lab code. Classes 3 and 6 shipped as standalone repos rather than directories in the course repo, which is why they were easy to miss.
-
-**Original history is intact.** Pre-rename state is on the `upstream-course` remote:
+Modules 4 and 5 began as the standalone `fullstack-inferencing` and `ray_project` repos, absorbed with `git subtree`. Course class 4 had no lab code. Pre-rename state lives on the `upstream-course` remote, and `git log --follow` tracks any file across the renames:
 
 ```bash
-git fetch upstream-course
-git show upstream-course/main:class7/gateway/router.py   # browse a file
-git log --follow -- module6-admission-and-routing/gateway/router.py    # history across the rename
+git show upstream-course/main:class7/gateway/router.py
+git log --follow -- module6-admission-and-routing/gateway/router.py
 ```
-
-`git log --follow` tracks a file through the rename, so `git blame` and history are unaffected.
-
-</details>
-
-### What's in each
-
-<details>
-<summary><strong>module1-prefill-vs-decode — Prefill vs Decode</strong></summary>
-
-A single notebook. Times the two phases of an LLM call separately and shows they are different workloads: prefill is compute-bound and parallel, decode is memory-bandwidth-bound and sequential. Ends by mapping the asymmetry onto API pricing — output tokens cost more because decode is slower, and the price list is a readout of the hardware.
-
-**Files:** `class1.ipynb`
-**Handbook:** Ch. 00 (Transformer at Inference), Ch. 01 (GPU Hardware)
-</details>
-
-<details>
-<summary><strong>module2-server-and-gateway — Inference Server and Gateway</strong></summary>
-
-Wrap a model in FastAPI the obvious way, then break it with concurrency. Compares four systems under identical load: a naive server, llama.cpp as a real engine, a batching proxy, and a routing gateway. The naive server is bad *on purpose* — a global model lock, no batching, no backpressure.
-
-The sharp comparison is the batching proxy vs. the routing gateway: both are "gateways," but only one moves throughput, because batching is an engine concern.
-
-**Files:** `naive_server/`, `modal_apps/`, `scripts/part*.py`, `class2.ipynb`
-**Handbook:** Ch. 05.3 (Continuous Batching), Ch. 06 (Engines), Ch. 08 (Serving)
-</details>
-
-<details>
-<summary><strong>module3-build-your-own-engine — smol-vllm: Build the Engine</strong></summary>
-
-A miniature vLLM in ~1,500 lines. Paged KV blocks with a free list and refcounts, a scheduler that promotes and preempts, and a metrics layer. Runs on CPU against a fake model, so sweeps are free and seeded runs are reproducible.
-
-Includes `exercises.py` — three stubs (`allocate`, `append_slot`, `schedule_promotions`) with full specs and no implementations — plus a deliberate **preemption livelock** reproduction: a system at 100% utilization making zero forward progress.
-
-**Files:** `smol-vllm/smol_vllm/{block_manager,scheduler,engine}.py`, `demo.py`
-**Handbook:** Ch. 04.1 (PagedAttention), Ch. 04.5 (Prefix Caching), Ch. 05.3 (Continuous Batching)
-</details>
-
-<details>
-<summary><strong>module4-observability-and-cost — The Whole Stack, Instrumented</strong></summary>
-
-CrewAI → nginx → gateway → vLLM on a Lambda GPU, with Prometheus, Grafana, and per-request cost accounting. Every other module measures with a purpose-built script; this one measures the way production does.
-
-Includes an engine-flag A/B harness — chunked prefill, prefix caching, speculative decoding — each as a separate vLLM profile driven under identical load. The real-vLLM counterpart to the mechanisms `module3-build-your-own-engine` builds from scratch.
-
-Key idea: the gateway exports `upstream_duration` *and* `request_duration`, so `total − upstream` isolates gateway and tunnel overhead. Without that subtraction a slow gateway and a slow engine look identical.
-
-**Files:** `gateway.py`, `monitoring/`, `scripts/vllm_engine/`, `lambda_pricing.py`
-**Handbook:** Ch. 09 (Benchmarking & Observability), Ch. 11.5 (Agentic Workload)
-</details>
-
-<details>
-<summary><strong>module5-multi-gpu-scaling — More Than One GPU</strong></summary>
-
-Every earlier module assumes a single GPU. This is where that breaks. Ray Serve and vLLM on Modal, with tensor / pipeline / data parallelism as the knobs.
-
-The rule under test: use TP/PP only when you *must* (the model doesn't fit), use DP when you *can* (you need throughput). Splitting a model that already fits pays all-reduce cost for nothing.
-
-Carries the metric trap worth internalizing — `run_bench.py` reports **aggregate** and **per-stream** throughput separately, because per-stream stays flat when you scale out and will tell you, wrongly, that adding GPUs did nothing.
-
-**Files:** `serve_app.py`, `modal_app.py`, `load_test/run_bench.py`, `profiling/profile_{tp,dp,tp_pp}.sh`
-**Handbook:** Ch. 07.1 (Tensor Parallelism), Ch. 08.1 (Ray Serve)
-</details>
-
-<details>
-<summary><strong>module6-admission-and-routing — Gateway over Two vLLM Replicas</strong></summary>
-
-Real vLLM, two replicas, one GPU, `--max-num-seqs 8` and not raisable. The constraint is the lesson. A gateway makes three decisions: admit or shed (five checks, including refusing work that provably cannot meet its deadline), queue order (EDF with anti-starvation aging), and replica choice (prefix-cache affinity scored against load).
-
-Ships with four presets — `baseline` → `route` → `queue` → `full` — benchmarked under identical load.
-
-**Files:** `gateway/`, `app.py`, `limiter.py`, `bench/report.py`
-**Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
-</details>
 
 ---
 
