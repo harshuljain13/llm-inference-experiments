@@ -19,7 +19,7 @@ if [[ -z "${LAMBDA_SSH_KEY:-}" || ! -f "$LAMBDA_SSH_KEY" ]]; then
   exit 1
 fi
 
-echo "Sync Mac → $LAMBDA:~/module4-admission-and-routing/"
+echo "Sync Mac → $LAMBDA:~/module6-admission-and-routing/"
 ssh -i "$LAMBDA_SSH_KEY" -o StrictHostKeyChecking=accept-new "$LAMBDA" echo "SSH OK"
 
 rsync -avz --progress -e "ssh -i $LAMBDA_SSH_KEY -o StrictHostKeyChecking=accept-new" \
@@ -30,7 +30,7 @@ rsync -avz --progress -e "ssh -i $LAMBDA_SSH_KEY -o StrictHostKeyChecking=accept
   --exclude 'results.html' \
   --exclude '.env' \
   ./ \
-  "$LAMBDA:~/module4-admission-and-routing/"
+  "$LAMBDA:~/module6-admission-and-routing/"
 
 echo ""
 echo "Synced. On your Mac:"

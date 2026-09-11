@@ -62,12 +62,14 @@ Benchmark data-parallel scaling with the per-stream number and you'll conclude, 
 ## Where this sits
 
 ```
-module4-admission-and-routing      one gateway, two replicas, one GPU
+module3-build-your-own-engine    one engine, one GPU
       ↓
-module5-multi-gpu-scaling  many GPUs — split the model, or replicate it
+module5-multi-gpu-scaling        many GPUs — split the model, or replicate it
+      ↓
+module6-admission-and-routing    govern the fleet you just built
 ```
 
-Module 4 decided *which* replica gets a request. Module 5 asks how those replicas should be constituted in the first place.
+Module 5 asks how replicas should be constituted. Module 6 then decides *which* of them gets a given request.
 
 **Handbook:** Ch. 07.1 (Tensor Parallelism), Ch. 07.2 (MoE Inference), Ch. 08.1 (Ray Serve)
 

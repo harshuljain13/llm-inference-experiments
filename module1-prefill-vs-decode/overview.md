@@ -30,7 +30,7 @@ During decode, the model must attend to every previous token. Recomputing their 
 - **With cache:** each new token only computes its own K/V and appends — linear.
 - **The cost:** memory. KV cache size grows with `sequence_length × layers × heads × head_dim × 2 (K and V) × dtype_bytes`.
 
-That memory is the scarce resource. Module 3 builds a block allocator for it; module 4 sheds load when it runs low.
+That memory is the scarce resource. Module 3 builds a block allocator for it; module 6 sheds load when it runs low.
 
 ## Notebook structure
 
@@ -57,4 +57,4 @@ API providers charge *more for output tokens than input tokens* — often 3–5�
 
 - **Module 2** — put a server in front of this and watch it collapse under concurrency.
 - **Module 3** — build the engine that manages KV memory in blocks.
-- **Module 4** — build the gateway that decides who gets KV memory at all.
+- **Module 6** — build the gateway that decides who gets KV memory at all.

@@ -19,4 +19,4 @@ if [[ -z "${LAMBDA_SSH_KEY:-}" || ! -f "$LAMBDA_SSH_KEY" ]]; then
   exit 1
 fi
 
-exec ssh -i "$LAMBDA_SSH_KEY" -o StrictHostKeyChecking=accept-new -t "$LAMBDA" 'mkdir -p ~/module4-admission-and-routing; cd ~/module4-admission-and-routing; exec bash -l'
+exec ssh -i "$LAMBDA_SSH_KEY" -o StrictHostKeyChecking=accept-new -t "$LAMBDA" 'mkdir -p ~/module6-admission-and-routing; cd ~/module6-admission-and-routing; exec bash -l'

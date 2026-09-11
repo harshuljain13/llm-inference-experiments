@@ -75,7 +75,7 @@ Four operations, and why each matters:
 
 **Why this beats contiguous allocation:** no fragmentation (any free block fits any sequence), no over-reservation (you don't pre-allocate for max possible length), and sharing becomes a refcount increment instead of a memcpy.
 
-`utilization()` — used/total blocks — is the pressure signal. Module 4's gateway scrapes exactly this from real vLLM as `vllm:kv_cache_usage_perc`.
+`utilization()` — used/total blocks — is the pressure signal. Module 6's gateway scrapes exactly this from real vLLM as `vllm:kv_cache_usage_perc`.
 
 ## The scheduler
 
@@ -130,7 +130,7 @@ That last invariant is the subtle one: skipping a blocked head-of-queue request 
 
 `agent_demo.py` + `lib/smol_crew_llm.py` wrap the engine in a CrewAI `BaseLLM`, so agent requests flow into `add_request()`. The point: **an agent framework is just a client.** It generates bursty, prefix-heavy traffic — which is precisely the traffic pattern that makes paging and prefix sharing pay off.
 
-Module 4 uses the identical adapter pattern, but the engine behind it is real vLLM across two replicas.
+Module 6 uses the identical adapter pattern, but the engine behind it is real vLLM across two replicas.
 
 ## What to take away
 
@@ -141,4 +141,4 @@ Module 4 uses the identical adapter pattern, but the engine behind it is real vL
 
 ## Where this leads
 
-- **Module 4** — the engine is now real vLLM. Your job moves up a layer: decide what enters, in what order, and on which replica.
+- **Module 6** — the engine is now real vLLM. Your job moves up a layer: decide what enters, in what order, and on which replica.

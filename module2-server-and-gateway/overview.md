@@ -99,4 +99,4 @@ Plus: `workers=1` is intentional (more workers would duplicate model weights in 
 ## Where this leads
 
 - **Module 3** — stop treating the engine as a black box; build one.
-- **Module 4** — build the gateway properly: admission, queueing, prefix-aware routing.
+- **Module 6** — build the gateway properly: admission, queueing, prefix-aware routing.

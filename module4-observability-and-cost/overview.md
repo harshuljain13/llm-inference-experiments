@@ -1,4 +1,4 @@
-# Module 6 — Observability: The Whole Stack, Instrumented
+# Module 4 — Observability: The Whole Stack, Instrumented
 
 > Course **class 3**, shipped as the standalone `fullstack-inferencing` repo. vLLM + Prometheus + Grafana, engine A/B, cost.
 
@@ -52,7 +52,7 @@ The SSH tunnel matters: it means the *gateway runs on your laptop* while the GPU
 | `speculative_decoding.sh` | draft model | ITL ↓ if acceptance rate is high; ↑ if not |
 | `run_engine_fleet.sh` | all at once, ports 8000–8005 | side-by-side under one load generator |
 
-> These stay in this module rather than moving to `module3-build-your-own-engine` because the A/B harness here *is* what drives them. Module 3 builds these mechanisms from scratch on CPU; module 6 measures the real vLLM implementations of the same ideas.
+> These stay in this module rather than moving to `module3-build-your-own-engine` because the A/B harness here *is* what drives them. Module 3 builds these mechanisms from scratch on CPU; this module measures the real vLLM implementations of the same ideas.
 
 ## Metrics worth understanding
 

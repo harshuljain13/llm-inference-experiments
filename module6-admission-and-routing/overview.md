@@ -1,10 +1,10 @@
-# Module 4 — Gateway: Admission, Queueing, Routing
+# Module 6 — Gateway: Admission, Queueing, Routing
 
 > Course **class 7**. Decide what enters, in what order, and on which replica.
 
 **One sentence:** Put a gateway in front of two real vLLM replicas and make three decisions well — *should this request be accepted, in what order should it run, and which replica should get it.*
 
-Module 3 built the engine. Module 4 accepts it as given (real vLLM, `--max-num-seqs 8`, not raisable) and moves up a layer. **The constraint is the lesson:** 16 total slots on one GPU, and you may not add more.
+Module 3 built the engine. Module 6 accepts it as given (real vLLM, `--max-num-seqs 8`, not raisable) and moves up a layer. **The constraint is the lesson:** 16 total slots on one GPU, and you may not add more.
 
 ---
 
@@ -157,13 +157,15 @@ Two known accounting quirks: `queue_depth_max` is 0 for presets 1–2 because th
 - **Aging is mandatory** anywhere you reorder a queue, or you've built starvation.
 - **Measure under real overload**, or your policies are untested no-ops that look like they work.
 
-## The thread through all four classes
+## The thread through the whole repo
 
-| Class | Layer | Question |
+| Module | Layer | Question |
 |---|---|---|
 | 1 | Model | Why is decode slow and prefill fast? |
-| 2 | Server | What breaks under concurrency, and at which layer? |
-| 5 | Engine | How is KV memory managed and work scheduled? |
-| 7 | Gateway | Who gets in, in what order, and on which GPU? |
+| 2 | Server + Gateway | Which layer owns which problem? |
+| 3 | Engine | How is KV memory paged and work scheduled? |
+| 4 | Production | What does the stack cost, and where does time go? |
+| 5 | Multi-GPU | Split the model, or replicate it? |
+| 6 | Gateway | Who gets in, in what order, and on which GPU? |
 
 One idea throughout: **the GPU is scarce.** Decide carefully what enters, what runs next, where it runs — then measure whether the decisions helped.

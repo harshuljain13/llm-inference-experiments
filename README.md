@@ -66,9 +66,9 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
 | **[module1-prefill-vs-decode](module1-prefill-vs-decode/)** | Model | Why is decode slow and prefill fast? | Optional | [overview](module1-prefill-vs-decode/overview.md) |
 | **[module2-server-and-gateway](module2-server-and-gateway/)** | Server + Gateway | Which layer owns which problem? | Optional | [overview](module2-server-and-gateway/overview.md) |
 | **[module3-build-your-own-engine](module3-build-your-own-engine/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](module3-build-your-own-engine/overview.md) |
-| **[module4-admission-and-routing](module4-admission-and-routing/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module4-admission-and-routing/overview.md) |
+| **[module4-observability-and-cost](module4-observability-and-cost/)** | Production | What does the whole stack cost, and where does time go? | **Yes** | [overview](module4-observability-and-cost/overview.md) |
 | **[module5-multi-gpu-scaling](module5-multi-gpu-scaling/)** | Multi-GPU | Split the model or replicate it? | **Yes** | [overview](module5-multi-gpu-scaling/overview.md) |
-| **[module6-observability-and-cost](module6-observability-and-cost/)** | Production | What does the whole stack cost, and where does time go? | **Yes** | [overview](module6-observability-and-cost/overview.md) |
+| **[module6-admission-and-routing](module6-admission-and-routing/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module6-admission-and-routing/overview.md) |
 
 ### The stack, assembled
 
@@ -79,12 +79,14 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
         ↓
    module3-build-your-own-engine   paged KV blocks · continuous batching · preemption livelock
         ↓
-   module4-admission-and-routing   admission control · deadline-ordered queue · prefix routing
+   module4-observability-and-cost  instrument the whole stack · engine flag A/B · $ per request
         ↓
    module5-multi-gpu-scaling       tensor / pipeline / data parallel · when each is worth it
         ↓
-   module6-observability-and-cost  the whole stack, instrumented · engine flag A/B · $ per request
+   module6-admission-and-routing   admission control · deadline-ordered queue · prefix routing
 ```
+
+You measure before you optimize (4), scale out once one GPU isn't enough (5), then govern the fleet you now have (6).
 
 ### Where did each module come from?
 
@@ -95,23 +97,21 @@ Modules are numbered sequentially. If you're looking for "class 7" or one of the
 
 | Was | Now | Why it moved |
 |---|---|---|
-| `class1` | [`module1-prefill-vs-decode`](module1-prefill-vs-decode/) | renumbered sequentially |
-| `class2` | [`module2-server-and-gateway`](module2-server-and-gateway/) | renumbered sequentially |
-| `class5` | [`module3-build-your-own-engine`](module3-build-your-own-engine/) | renumbered sequentially |
-| `class7` | [`module4-admission-and-routing`](module4-admission-and-routing/) | renumbered sequentially |
-| `class3` — `fullstack-inferencing` repo | [`module6-observability-and-cost`](module6-observability-and-cost/) | absorbed via `git subtree` |
+| `class1` | [`module1-prefill-vs-decode`](module1-prefill-vs-decode/) | renumbered |
+| `class2` | [`module2-server-and-gateway`](module2-server-and-gateway/) | renumbered |
+| `class5` | [`module3-build-your-own-engine`](module3-build-your-own-engine/) | renumbered |
+| `class3` — `fullstack-inferencing` repo | [`module4-observability-and-cost`](module4-observability-and-cost/) | absorbed via `git subtree` |
 | `class6` — `ray_project` repo | [`module5-multi-gpu-scaling`](module5-multi-gpu-scaling/) | absorbed via `git subtree` |
+| `class7` | [`module6-admission-and-routing`](module6-admission-and-routing/) | renumbered |
 
-Only course class 4 had no lab code.
-
-**Modules are ordered by stack layer, not by course order.** Classes 3 and 6 shipped as standalone repos and sit late in the module numbering because observability is cross-cutting and multi-GPU builds on the single-GPU modules.
+Only course class 4 had no lab code. Classes 3 and 6 shipped as standalone repos rather than directories in the course repo, which is why they were easy to miss.
 
 **Original history is intact.** Pre-rename state is on the `upstream-course` remote:
 
 ```bash
 git fetch upstream-course
 git show upstream-course/main:class7/gateway/router.py   # browse a file
-git log --follow -- module4-admission-and-routing/gateway/router.py    # history across the rename
+git log --follow -- module6-admission-and-routing/gateway/router.py    # history across the rename
 ```
 
 `git log --follow` tracks a file through the rename, so `git blame` and history are unaffected.
@@ -152,14 +152,16 @@ Includes `exercises.py` — three stubs (`allocate`, `append_slot`, `schedule_pr
 </details>
 
 <details>
-<summary><strong>module4-admission-and-routing — Gateway over Two vLLM Replicas</strong></summary>
+<summary><strong>module4-observability-and-cost — The Whole Stack, Instrumented</strong></summary>
 
-Real vLLM, two replicas, one GPU, `--max-num-seqs 8` and not raisable. The constraint is the lesson. A gateway makes three decisions: admit or shed (five checks, including refusing work that provably cannot meet its deadline), queue order (EDF with anti-starvation aging), and replica choice (prefix-cache affinity scored against load).
+CrewAI → nginx → gateway → vLLM on a Lambda GPU, with Prometheus, Grafana, and per-request cost accounting. Every other module measures with a purpose-built script; this one measures the way production does.
 
-Ships with four presets — `baseline` → `route` → `queue` → `full` — benchmarked under identical load.
+Includes an engine-flag A/B harness — chunked prefill, prefix caching, speculative decoding — each as a separate vLLM profile driven under identical load. The real-vLLM counterpart to the mechanisms `module3-build-your-own-engine` builds from scratch.
 
-**Files:** `gateway/`, `app.py`, `limiter.py`, `bench/report.py`
-**Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
+Key idea: the gateway exports `upstream_duration` *and* `request_duration`, so `total − upstream` isolates gateway and tunnel overhead. Without that subtraction a slow gateway and a slow engine look identical.
+
+**Files:** `gateway.py`, `monitoring/`, `scripts/vllm_engine/`, `lambda_pricing.py`
+**Handbook:** Ch. 09 (Benchmarking & Observability), Ch. 11.5 (Agentic Workload)
 </details>
 
 <details>
@@ -176,16 +178,14 @@ Carries the metric trap worth internalizing — `run_bench.py` reports **aggrega
 </details>
 
 <details>
-<summary><strong>module6-observability-and-cost — The Whole Stack, Instrumented</strong></summary>
+<summary><strong>module6-admission-and-routing — Gateway over Two vLLM Replicas</strong></summary>
 
-CrewAI → nginx → gateway → vLLM on a Lambda GPU, with Prometheus, Grafana, and per-request cost accounting. Every other module measures with a purpose-built script; this one measures the way production does.
+Real vLLM, two replicas, one GPU, `--max-num-seqs 8` and not raisable. The constraint is the lesson. A gateway makes three decisions: admit or shed (five checks, including refusing work that provably cannot meet its deadline), queue order (EDF with anti-starvation aging), and replica choice (prefix-cache affinity scored against load).
 
-Includes an engine-flag A/B harness — chunked prefill, prefix caching, speculative decoding — each as a separate vLLM profile driven under identical load. The real-vLLM counterpart to the mechanisms `module3-build-your-own-engine` builds from scratch.
+Ships with four presets — `baseline` → `route` → `queue` → `full` — benchmarked under identical load.
 
-Key idea: the gateway exports `upstream_duration` *and* `request_duration`, so `total − upstream` isolates gateway and tunnel overhead. Without that subtraction a slow gateway and a slow engine look identical.
-
-**Files:** `gateway.py`, `monitoring/`, `scripts/vllm_engine/`, `lambda_pricing.py`
-**Handbook:** Ch. 09 (Benchmarking & Observability), Ch. 11.5 (Agentic Workload)
+**Files:** `gateway/`, `app.py`, `limiter.py`, `bench/report.py`
+**Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
 </details>
 
 ---
@@ -234,7 +234,7 @@ The causal map these experiments exist to establish. Direction matters more than
 | `preempt_guard` off | **livelock** | throughput → 0 at 100% utilization |
 | prefix sharing on | effective KV capacity ↑ | more concurrency at the same memory |
 
-**Gateway layer** — `module4-admission-and-routing`
+**Gateway layer** — `module6-admission-and-routing`
 
 | Lever | Primary effect | Trade | Visible only when |
 |---|---|---|---|

@@ -3,7 +3,7 @@
 One GPU on Lambda. `--max-num-seqs 8` is the point — do not raise it.
 
 ```
-module4-admission-and-routing/
+module6-admission-and-routing/
   app.py          CrewAI client
   limiter.py      app-side rate limiter
   gateway/        Python package  (python -m gateway.main)
@@ -18,12 +18,12 @@ module4-admission-and-routing/
 
 # ON YOUR MAC
 
-Rsync first. SSH into an empty `~/module4-admission-and-routing` is a dead end — the lab is not on the GPU until `sync_to_lambda.sh` finishes.
+Rsync first. SSH into an empty `~/module6-admission-and-routing` is a dead end — the lab is not on the GPU until `sync_to_lambda.sh` finishes.
 
-Open a **new** terminal. `pwd` must end with `module4-admission-and-routing`.
+Open a **new** terminal. `pwd` must end with `module6-admission-and-routing`.
 
 ```
-cd module4-admission-and-routing
+cd module6-admission-and-routing
 pwd
 cp .env.example .env
 ```
@@ -48,7 +48,7 @@ Wait until it prints `Synced`. Then:
 bash setup/ssh.sh
 ```
 
-`setup/ssh.sh` reads `.env` itself and drops you on the GPU in `~/module4-admission-and-routing`. The prompt is `ubuntu@...`, not `jarvis@...`.
+`setup/ssh.sh` reads `.env` itself and drops you on the GPU in `~/module6-admission-and-routing`. The prompt is `ubuntu@...`, not `jarvis@...`.
 
 On Lambda, check the copy landed:
 
@@ -61,7 +61,7 @@ You must see `app.py`, `Makefile`, `gateway/`, `setup/`. If `ls` is empty, `exit
 Every time you change code, rsync again from the Mac before you expect Lambda to see it:
 
 ```
-cd module4-admission-and-routing
+cd module6-admission-and-routing
 bash setup/sync_to_lambda.sh
 ```
 
@@ -69,7 +69,7 @@ bash setup/sync_to_lambda.sh
 
 # ON LAMBDA — setup (once)
 
-Only after rsync. You are already in `~/module4-admission-and-routing` if you used `bash setup/ssh.sh`.
+Only after rsync. You are already in `~/module6-admission-and-routing` if you used `bash setup/ssh.sh`.
 
 ```
 bash setup/lambda_setup.sh
@@ -78,7 +78,7 @@ bash setup/lambda_setup.sh
 Every new Lambda tab:
 
 ```
-cd ~/module4-admission-and-routing && source .venv/bin/activate
+cd ~/module6-admission-and-routing && source .venv/bin/activate
 ```
 
 ---
@@ -123,12 +123,12 @@ bash setup/launch_replicas.sh
 The gateway occupies the first tab, so the client needs its own. Open a **new terminal on your Mac** and SSH in again:
 
 ```
-cd module4-admission-and-routing
+cd module6-admission-and-routing
 bash setup/ssh.sh
 source .venv/bin/activate
 ```
 
-`setup/ssh.sh` already lands you in `~/module4-admission-and-routing`. Then:
+`setup/ssh.sh` already lands you in `~/module6-admission-and-routing`. Then:
 
 ```
 python app.py "What is KV cache?"
@@ -137,7 +137,7 @@ make test
 make bench
 ```
 
-`make bench` runs all four presets (baseline → route → queue → full) and writes `results.json` and `results.html` **on Lambda**, in `~/module4-admission-and-routing`.
+`make bench` runs all four presets (baseline → route → queue → full) and writes `results.json` and `results.html` **on Lambda**, in `~/module6-admission-and-routing`.
 
 ---
 
@@ -145,13 +145,13 @@ make bench
 
 The bench output lives on the GPU box. Copy it down before you terminate the instance — the instance is gone for good, and so are the results.
 
-On your **Mac**, from `module4-admission-and-routing`:
+On your **Mac**, from `module6-admission-and-routing`:
 
 ```
 set -a; source .env; set +a
 scp -i "$LAMBDA_SSH_KEY" \
-  "$LAMBDA:/home/ubuntu/module4-admission-and-routing/results.json" \
-  "$LAMBDA:/home/ubuntu/module4-admission-and-routing/results.html" .
+  "$LAMBDA:/home/ubuntu/module6-admission-and-routing/results.json" \
+  "$LAMBDA:/home/ubuntu/module6-admission-and-routing/results.html" .
 ```
 
 Then `open results.html`.
