@@ -1,4 +1,6 @@
-# Class 1 — Overview
+# Module 1 — Model: Prefill vs Decode
+
+> Course **class 1**. Where an LLM call spends its time.
 
 **One sentence:** An LLM call is two completely different workloads glued together — a compute-bound *prefill* and a memory-bound *decode* — and almost everything in later classes exists to manage that split.
 
@@ -28,7 +30,7 @@ During decode, the model must attend to every previous token. Recomputing their 
 - **With cache:** each new token only computes its own K/V and appends — linear.
 - **The cost:** memory. KV cache size grows with `sequence_length × layers × heads × head_dim × 2 (K and V) × dtype_bytes`.
 
-That memory is the scarce resource. Class 5 builds a block allocator for it; class 7 sheds load when it runs low.
+That memory is the scarce resource. Module 3 builds a block allocator for it; module 4 sheds load when it runs low.
 
 ## Notebook structure
 
@@ -53,6 +55,6 @@ API providers charge *more for output tokens than input tokens* — often 3–5�
 
 ## Where this leads
 
-- **Class 2** — put a server in front of this and watch it collapse under concurrency.
-- **Class 5** — build the engine that manages KV memory in blocks.
-- **Class 7** — build the gateway that decides who gets KV memory at all.
+- **Module 2** — put a server in front of this and watch it collapse under concurrency.
+- **Module 3** — build the engine that manages KV memory in blocks.
+- **Module 4** — build the gateway that decides who gets KV memory at all.

@@ -1,8 +1,10 @@
-# Class 2 — Overview
+# Module 2 — Server: Build, Break, Observe
+
+> Course **class 2**. Wrap a model in HTTP, then break it with concurrency.
 
 **One sentence:** Wrap a model in an HTTP server the obvious way, break it with concurrency, then compare it against a real engine and a gateway — learning the four-layer stack **model → engine → server → gateway**.
 
-Class 1 looked *inside* one inference call. Class 2 looks at it *from the outside*, as a service.
+Module 1 looked *inside* one inference call. Module 2 looks at it *from the outside*, as a service.
 
 ---
 
@@ -68,12 +70,12 @@ Running the same load against all four is the experiment. **C vs. D is the sharp
 `server.py` is bad *on purpose*, and the file comments say so. Three specific flaws:
 
 1. **`MODEL_LOCK` serializes every generate.** Two concurrent requests queue behind each other. Throughput is flat no matter how many clients arrive — the lock is deliberately exposed "for teaching."
-2. **No batching.** Real engines run many sequences through the GPU in one forward pass. This runs them one at a time, so the GPU sits idle during decode (recall class 1: decode is bandwidth-bound and *wants* company).
+2. **No batching.** Real engines run many sequences through the GPU in one forward pass. This runs them one at a time, so the GPU sits idle during decode (recall module 1: decode is bandwidth-bound and *wants* company).
 3. **No queue, no backpressure, no admission control.** Every request is accepted. Under load they all get slower together rather than some failing fast — latency collapse instead of graceful degradation.
 
 Plus: `workers=1` is intentional (more workers would duplicate model weights in GPU memory), and blocking `generate()` inside an async route blocks the event loop.
 
-**This is the exact problem class 7 solves at the gateway layer and class 5 solves at the engine layer.**
+**This is the exact problem module 4 solves at the gateway layer and module 3 solves at the engine layer.**
 
 ## Notebook parts
 
@@ -96,5 +98,5 @@ Plus: `workers=1` is intentional (more workers would duplicate model weights in 
 
 ## Where this leads
 
-- **Class 5** — stop treating the engine as a black box; build one.
-- **Class 7** — build the gateway properly: admission, queueing, prefix-aware routing.
+- **Module 3** — stop treating the engine as a black box; build one.
+- **Module 4** — build the gateway properly: admission, queueing, prefix-aware routing.

@@ -1,8 +1,10 @@
-# Class 5 — Overview
+# Module 3 — Engine: Build Your Own Inference Engine
 
-**One sentence:** Build a miniature vLLM — paged KV memory, a batching scheduler, preemption — so the engine layer from class 2 stops being a black box.
+> Course **class 5**. Paged KV memory, continuous batching, preemption — from scratch.
 
-Class 2 treated the engine as something you download. Class 5 opens it up. It runs on CPU with a fake model by default; a real model is optional.
+**One sentence:** Build a miniature vLLM — paged KV memory, a batching scheduler, preemption — so the engine layer from module 2 stops being a black box.
+
+Module 2 treated the engine as something you download. Module 3 opens it up. It runs on CPU with a fake model by default; a real model is optional.
 
 ---
 
@@ -73,7 +75,7 @@ Four operations, and why each matters:
 
 **Why this beats contiguous allocation:** no fragmentation (any free block fits any sequence), no over-reservation (you don't pre-allocate for max possible length), and sharing becomes a refcount increment instead of a memcpy.
 
-`utilization()` — used/total blocks — is the pressure signal. Class 7's gateway scrapes exactly this from real vLLM as `vllm:kv_cache_usage_perc`.
+`utilization()` — used/total blocks — is the pressure signal. Module 4's gateway scrapes exactly this from real vLLM as `vllm:kv_cache_usage_perc`.
 
 ## The scheduler
 
@@ -98,7 +100,7 @@ prefill_groups = [g for g in scheduled if not g.sequences[0].output_tokens]
 decode_groups  = [g for g in scheduled if     g.sequences[0].output_tokens]
 ```
 
-A sequence with no output tokens yet needs prefill; one with output tokens needs decode. They're timed separately (`prefill_ms`, `decode_ms`) because — straight from class 1 — **they're different workloads**. Prefill is compute-bound and chunky; decode is bandwidth-bound and steady.
+A sequence with no output tokens yet needs prefill; one with output tokens needs decode. They're timed separately (`prefill_ms`, `decode_ms`) because — straight from module 1 — **they're different workloads**. Prefill is compute-bound and chunky; decode is bandwidth-bound and steady.
 
 On finish: mark FINISHED, `record_request_finish`, **`block_manager.free()`**, drop from running. Forgetting the free is a KV leak — the class-5 version of a memory leak.
 
@@ -128,15 +130,15 @@ That last invariant is the subtle one: skipping a blocked head-of-queue request 
 
 `agent_demo.py` + `lib/smol_crew_llm.py` wrap the engine in a CrewAI `BaseLLM`, so agent requests flow into `add_request()`. The point: **an agent framework is just a client.** It generates bursty, prefix-heavy traffic — which is precisely the traffic pattern that makes paging and prefix sharing pay off.
 
-Class 7 uses the identical adapter pattern, but the engine behind it is real vLLM across two replicas.
+Module 4 uses the identical adapter pattern, but the engine behind it is real vLLM across two replicas.
 
 ## What to take away
 
 - Paging solves fragmentation *and* enables sharing. One design, two wins.
 - Preemption is not free — you throw away computed KV. Count it.
 - A busy system is not a productive system. Livelock is real, and guards are what prevent it.
-- Every number the class 7 gateway scrapes (`num_requests_waiting`, `kv_cache_usage_perc`, `num_preemptions_total`) is something you built here by hand.
+- Every number the module 4 gateway scrapes (`num_requests_waiting`, `kv_cache_usage_perc`, `num_preemptions_total`) is something you built here by hand.
 
 ## Where this leads
 
-- **Class 7** — the engine is now real vLLM. Your job moves up a layer: decide what enters, in what order, and on which replica.
+- **Module 4** — the engine is now real vLLM. Your job moves up a layer: decide what enters, in what order, and on which replica.

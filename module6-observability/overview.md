@@ -1,4 +1,6 @@
-# Module 6 — Overview
+# Module 6 — Observability: The Whole Stack, Instrumented
+
+> From the standalone `fullstack-inferencing` repo. Prometheus, Grafana, engine A/B, cost.
 
 **One sentence:** Wire a full production stack — CrewAI → nginx → gateway → vLLM on a real GPU — then instrument it end to end with Prometheus and Grafana, and A/B the engine flags that actually move the numbers.
 

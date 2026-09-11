@@ -86,6 +86,36 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
    module6-observability the whole stack, instrumented · engine flag A/B · $ per request
 ```
 
+### Where did each module come from?
+
+<details>
+<summary><strong>Provenance — course class / source repo → module</strong></summary>
+
+Modules are numbered sequentially. If you're looking for "class 7" or one of the standalone repos, it's here:
+
+| Was | Now | Why it moved |
+|---|---|---|
+| `class1` | [`module1-model`](module1-model/) | renumbered sequentially |
+| `class2` | [`module2-server`](module2-server/) | renumbered sequentially |
+| `class5` | [`module3-engine`](module3-engine/) | renumbered sequentially |
+| `class7` | [`module4-gateway`](module4-gateway/) | renumbered sequentially |
+| `ray_project` repo | [`module5-distributed`](module5-distributed/) | absorbed via `git subtree` |
+| `fullstack-inferencing` repo | [`module6-observability`](module6-observability/) | absorbed via `git subtree` |
+
+Course classes 3, 4, and 6 had no lab code, which is why the original numbering had gaps.
+
+**Original history is intact.** Pre-rename state is on the `upstream-course` remote:
+
+```bash
+git fetch upstream-course
+git show upstream-course/main:class7/gateway/router.py   # browse a file
+git log --follow -- module4-gateway/gateway/router.py    # history across the rename
+```
+
+`git log --follow` tracks a file through the rename, so `git blame` and history are unaffected.
+
+</details>
+
 ### What's in each
 
 <details>

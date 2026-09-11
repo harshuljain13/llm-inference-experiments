@@ -1,8 +1,10 @@
-# Class 7 — Overview
+# Module 4 — Gateway: Admission, Queueing, Routing
+
+> Course **class 7**. Decide what enters, in what order, and on which replica.
 
 **One sentence:** Put a gateway in front of two real vLLM replicas and make three decisions well — *should this request be accepted, in what order should it run, and which replica should get it.*
 
-Class 5 built the engine. Class 7 accepts it as given (real vLLM, `--max-num-seqs 8`, not raisable) and moves up a layer. **The constraint is the lesson:** 16 total slots on one GPU, and you may not add more.
+Module 3 built the engine. Module 4 accepts it as given (real vLLM, `--max-num-seqs 8`, not raisable) and moves up a layer. **The constraint is the lesson:** 16 total slots on one GPU, and you may not add more.
 
 ---
 
@@ -87,7 +89,7 @@ slack   = (deadline_at - now) - AGING_GAIN * passed_over
 return (long, slack, enqueued_at)
 ```
 
-- **Long prompts last** — a 1024+ token prefill blocks the batch (class 1: prefill is compute-bound and chunky).
+- **Long prompts last** — a 1024+ token prefill blocks the batch (module 1: prefill is compute-bound and chunky).
 - **EDF by slack** — least time-to-deadline first.
 - **Anti-starvation** — each overtake increments `passed_over`, which ages the item's slack downward and, after 8, promotes it out of the "long" penalty class entirely.
 

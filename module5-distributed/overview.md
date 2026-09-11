@@ -1,4 +1,6 @@
-# Module 5 — Overview
+# Module 5 — Distributed: More Than One GPU
+
+> From the standalone `ray_project` repo. Tensor, pipeline, and data parallelism.
 
 **One sentence:** One GPU is not enough — so split the model across GPUs (tensor / pipeline parallel), replicate it across workers (data parallel), and measure what each split actually buys.
 
