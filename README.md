@@ -67,17 +67,23 @@ Each lab moves one layer up the stack. Read the `overview.md`, then run the code
 | **[module2-server](module2-server/)** | Server | What breaks under concurrency, and at which layer? | Optional | [overview](module2-server/overview.md) |
 | **[module3-engine](module3-engine/)** | Engine | How is KV memory paged and work scheduled? | No | [overview](module3-engine/overview.md) |
 | **[module4-gateway](module4-gateway/)** | Gateway | Who gets in, in what order, on which GPU? | **Yes** | [overview](module4-gateway/overview.md) |
+| **[module5-distributed](module5-distributed/)** | Multi-GPU | Split the model or replicate it? | **Yes** | [overview](module5-distributed/overview.md) |
+| **[module6-observability](module6-observability/)** | Production | What does the whole stack cost, and where does time go? | **Yes** | [overview](module6-observability/overview.md) |
 
 ### The stack, assembled
 
 ```
-   module1-model     prefill vs decode · KV cache · why output tokens cost more
+   module1-model         prefill vs decode · KV cache · why output tokens cost more
         ↓
-   module2-server    model → engine → server → gateway · why naive servers melt
+   module2-server        model → engine → server → gateway · why naive servers melt
         ↓
-   module3-engine    paged KV blocks · continuous batching · preemption livelock
+   module3-engine        paged KV blocks · continuous batching · preemption livelock
         ↓
-   module4-gateway   admission control · deadline-ordered queue · prefix routing
+   module4-gateway       admission control · deadline-ordered queue · prefix routing
+        ↓
+   module5-distributed   tensor / pipeline / data parallel · when each is worth it
+        ↓
+   module6-observability the whole stack, instrumented · engine flag A/B · $ per request
 ```
 
 ### What's in each
@@ -122,6 +128,32 @@ Ships with four presets — `baseline` → `route` → `queue` → `full` — be
 
 **Files:** `gateway/`, `app.py`, `limiter.py`, `bench/report.py`
 **Handbook:** Ch. 08.6 (Cache-Aware Routing), Ch. 09.1 (Benchmarking), Ch. 11.5 (Agentic Workload)
+</details>
+
+<details>
+<summary><strong>module5-distributed — More Than One GPU</strong></summary>
+
+Every earlier module assumes a single GPU. This is where that breaks. Ray Serve and vLLM on Modal, with tensor / pipeline / data parallelism as the knobs.
+
+The rule under test: use TP/PP only when you *must* (the model doesn't fit), use DP when you *can* (you need throughput). Splitting a model that already fits pays all-reduce cost for nothing.
+
+Carries the metric trap worth internalizing — `run_bench.py` reports **aggregate** and **per-stream** throughput separately, because per-stream stays flat when you scale out and will tell you, wrongly, that adding GPUs did nothing.
+
+**Files:** `serve_app.py`, `modal_app.py`, `load_test/run_bench.py`, `profiling/profile_{tp,dp,tp_pp}.sh`
+**Handbook:** Ch. 07.1 (Tensor Parallelism), Ch. 08.1 (Ray Serve)
+</details>
+
+<details>
+<summary><strong>module6-observability — The Whole Stack, Instrumented</strong></summary>
+
+CrewAI → nginx → gateway → vLLM on a Lambda GPU, with Prometheus, Grafana, and per-request cost accounting. Every other module measures with a purpose-built script; this one measures the way production does.
+
+Includes an engine-flag A/B harness — chunked prefill, prefix caching, speculative decoding — each as a separate vLLM profile driven under identical load. The real-vLLM counterpart to the mechanisms `module3-engine` builds from scratch.
+
+Key idea: the gateway exports `upstream_duration` *and* `request_duration`, so `total − upstream` isolates gateway and tunnel overhead. Without that subtraction a slow gateway and a slow engine look identical.
+
+**Files:** `gateway.py`, `monitoring/`, `scripts/vllm_engine/`, `lambda_pricing.py`
+**Handbook:** Ch. 09 (Benchmarking & Observability), Ch. 11.5 (Agentic Workload)
 </details>
 
 ---
