@@ -10,7 +10,6 @@
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-the-experiments">Experiments</a> •
   <a href="#-metrics-vocabulary">Metrics</a> •
-  <a href="#-what-moves-what">Levers</a> •
   <a href="#-adding-an-experiment">Contributing</a>
 </p>
 
@@ -100,43 +99,6 @@ Used identically across every lab. Ambiguity here is the fastest way to draw a w
 | **Shed rate** | refusals / sec, **broken out by reason** | admission policy |
 
 > **Throughput and goodput diverge under overload — and that divergence is the whole point.** A system can maximize throughput while goodput falls to zero: everything completes, all of it too late to matter.
-
----
-
-## 🎛 What Moves What
-
-The causal map these experiments exist to establish. Direction matters more than magnitude.
-
-**Model layer** — `module1-prefill-vs-decode`
-
-| Lever | Primary effect | Should *not* move |
-|---|---|---|
-| prompt length ↑ | TTFT ↑ (≈linear) | ITL |
-| output length ↑ | total latency ↑ | TTFT |
-| KV cache off | ITL ↑↑ (quadratic) | TTFT |
-
-**Engine layer** — `module3-build-your-own-engine`
-
-| Lever | Primary effect | Trade / watch for |
-|---|---|---|
-| `max_batch_size` ↑ | throughput ↑, **then collapses** | ITL ↑; preempts spike at the KV wall |
-| `num_gpu_blocks` ↓ | preempts ↑ | wasted tokens ↑, goodput ↓ nonlinearly |
-| `block_size` ↑ | internal fragmentation ↑ | block-table overhead ↓ — a sweet spot exists |
-| `preempt_guard` off | **livelock** | throughput → 0 at 100% utilization |
-| prefix sharing on | effective KV capacity ↑ | more concurrency at the same memory |
-
-**Gateway layer** — `module6-admission-and-routing`
-
-| Lever | Primary effect | Trade | Visible only when |
-|---|---|---|---|
-| admission on | **goodput ↑** | throughput ↓, admitted ↓ | overloaded |
-| `KV_CEILING` ↓ | sheds earlier, p99 ↓ | more false rejects | near the KV wall |
-| queue on | interactive p99 ↓ | long-prompt p99 ↑ | queue depth > 1 |
-| `AGING_GAIN` ↑ | starvation ↓ | EDF purity ↓ | mixed prompt sizes |
-| `W_LOAD` vs `W_PREFIX` | spread ↔ hit rate | direct tradeoff | replicas actually busy |
-| `DISPATCH_OVERSHOOT` ↑ | GPU utilization ↑ | queue wait ↑ | saturated |
-
-**Read the last column carefully.** Most gateway levers are no-ops below saturation. An experiment run at 30% utilization will show admission control doing nothing — correctly, and uninformatively.
 
 ---
 
