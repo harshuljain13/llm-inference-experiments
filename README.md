@@ -104,29 +104,13 @@ Used identically across every lab. Ambiguity here is the fastest way to draw a w
 
 ## 📐 Measurement Discipline
 
-Three rules, each learned the hard way.
+Three rules every experiment here follows.
 
-**1. Sweep load. Never measure at a single point.**
-Every metric is a function of offered load. The interesting behavior is at the knee, and single-point measurements almost always land on the flat part of the curve.
-
-```
-   goodput
-     │      ╭─────╮
-     │     ╱       ╲          without admission control:
-     │    ╱          ╲           collapses past the knee
-     │   ╱             ╲___
-     │  ╱      ╭────────────  with admission control:
-     │ ╱      ╱                  plateaus instead
-     │╱______╱
-     └──────────────────────  offered load
-             ↑ knee
-```
-
-**2. Check what should *not* move.**
-If changing prompt length shifts your ITL, the measurement is wrong before the conclusion is. Every experiment declares its invariants.
-
-**3. Report goodput, not throughput.**
-Throughput rewards a system for finishing work nobody is waiting for anymore.
+| Rule | Why |
+|---|---|
+| **Sweep load — never a single point** | Every metric is a function of offered load. The behaviour worth seeing is at the knee; one-shot measurements land on the flat part. *(That's the curve in the banner above.)* |
+| **Declare what should *not* move** | If changing prompt length shifts ITL, the measurement is wrong before the conclusion is. |
+| **Report goodput, not throughput** | Throughput rewards a system for finishing work nobody is waiting for anymore. |
 
 ---
 
