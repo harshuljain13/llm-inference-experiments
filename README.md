@@ -68,8 +68,9 @@ Six modules, bottom-up. Each `overview.md` maps that module's files and explains
 | 4 | [**observability-and-cost**](module4-observability-and-cost/overview.md) | class 3 | Prometheus + Grafana · engine-flag A/B · $ per request | Where does time go, and what does it cost? | yes |
 | 5 | [**multi-gpu-scaling**](module5-multi-gpu-scaling/overview.md) | class 6 | tensor / pipeline / data parallel · Ray Serve | Split the model, or replicate it? | yes |
 | 6 | [**admission-and-routing**](module6-admission-and-routing/overview.md) | class 7 | admission control · deadline-ordered queue · prefix routing | Who gets in, in what order, on which GPU? | yes |
+| 7 | [**mini-serving-system**](module7-mini-serving-system/overview.md) | class 7 hw | admission + scheduler + router, simulated · postmortem scenarios | Can you build the three decisions yourself? | none |
 
-**Reading order:** measure before you optimize (4), scale out once one GPU isn't enough (5), then govern the fleet you now have (6). Modules 1–3 are CPU-friendly — start there.
+**Reading order:** measure before you optimize (4), scale out once one GPU isn't enough (5), govern the fleet you now have (6), then rebuild the whole policy from scratch to prove you understood it (7). Modules 1–3 and 7 are CPU-friendly — start there.
 
 Modules 4 and 5 began as the standalone `fullstack-inferencing` and `ray_project` repos, absorbed with `git subtree`. Course class 4 had no lab code. Pre-rename state lives on the `upstream-course` remote, and `git log --follow` tracks any file across the renames:
 
