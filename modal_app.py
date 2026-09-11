@@ -27,6 +27,24 @@ MAX_MODEL_LEN = int(os.environ.get("MODAL_MAX_MODEL_LEN", "2048"))
 VLLM_PORT = 8000
 MINUTES = 60
 
+# MODAL_* vars are read on the laptop AND again when the container re-imports this
+# module. They do not propagate on their own, so bake the ones we set into the image:
+# otherwise TP/PP silently fall back to defaults in the container, and the conditional
+# secret below makes the local/remote dependency counts disagree.
+_PLAYGROUND_ENV_KEYS = (
+    "MODAL_MODEL_NAME",
+    "MODAL_SERVED_MODEL_NAME",
+    "MODAL_GPU_TYPE",
+    "MODAL_GPU_COUNT",
+    "MODAL_TENSOR_PARALLEL_SIZE",
+    "MODAL_PIPELINE_PARALLEL_SIZE",
+    "MODAL_FAST_BOOT",
+    "MODAL_MAX_MODEL_LEN",
+    "MODAL_ALLOW_LONG_MAX_MODEL_LEN",
+    "MODAL_USE_HF_SECRET",
+)
+_baked_env = {k: os.environ[k] for k in _PLAYGROUND_ENV_KEYS if os.environ.get(k, "").strip()}
+
 vllm_image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.9.0-devel-ubuntu22.04",
@@ -34,7 +52,7 @@ vllm_image = (
     )
     .entrypoint([])
     .uv_pip_install("vllm==0.19.0")
-    .env({"HF_XET_HIGH_PERFORMANCE": "1"})
+    .env({"HF_XET_HIGH_PERFORMANCE": "1", **_baked_env})
 )
 
 hf_cache_vol = modal.Volume.from_name("playground-hf-cache", create_if_missing=True)

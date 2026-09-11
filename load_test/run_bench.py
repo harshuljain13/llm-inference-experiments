@@ -89,6 +89,16 @@ async def run(args: argparse.Namespace) -> None:
                     errors += 1
                     print("request error:", e)
 
+        if args.warmup:
+            # The first requests pay container cold start, weight load and CUDA
+            # graph capture. Timing them swamps p99 and understates RPS, so run
+            # them untimed and throw the samples away.
+            print("warmup: %d request(s)..." % args.warmup, flush=True)
+            await asyncio.gather(*(wrapped(i) for i in range(args.warmup)))
+            latencies.clear()
+            tokens_out.clear()
+            errors = 0
+
         t_wall0 = time.perf_counter()
         await asyncio.gather(*(wrapped(i) for i in range(args.requests)))
         wall_s = time.perf_counter() - t_wall0
@@ -104,9 +114,15 @@ async def run(args: argparse.Namespace) -> None:
     mean_lat = statistics.mean(latencies)
     rps = len(latencies) / wall_s if wall_s > 0 else float("nan")
     print("mean_latency_s=%.4f wall_s=%.3f aggregate_rps=%.2f" % (mean_lat, wall_s, rps))
+    if total_toks > 0 and wall_s > 0:
+        # The headline throughput number: what the whole system delivered per
+        # second of wall clock. This is what has to move when you add GPUs.
+        print("output_tok_per_sec=%.2f (aggregate: completion_tokens / wall_s)" % (total_toks / wall_s))
     if total_toks > 0 and sum(latencies) > 0:
+        # Per-stream rate: roughly aggregate / concurrency, so it stays flat when
+        # you scale out. Good for single-user speed, useless for comparing DP.
         print(
-            "approx_output_tok_per_sec=%.2f (completion_tokens summed / sum(latencies))"
+            "per_stream_output_tok_per_sec=%.2f (completion_tokens summed / sum(latencies))"
             % (total_toks / sum(latencies))
         )
 
@@ -117,6 +133,7 @@ def main():
     p.add_argument("--model", default=None)
     p.add_argument("--concurrency", type=int, default=8)
     p.add_argument("--requests", type=int, default=100)
+    p.add_argument("--warmup", type=int, default=5, help="Untimed requests to discard first")
     p.add_argument("--max-tokens", type=int, default=64)
     p.add_argument("--temperature", type=float, default=0.7)
     args = p.parse_args()
