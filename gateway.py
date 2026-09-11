@@ -28,6 +28,7 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
     Counter,
+    Gauge,
     Histogram,
     Info,
     generate_latest,
@@ -119,7 +120,7 @@ REQUEST_DURATION = Histogram(
     "llm_gateway_request_duration_seconds",
     "End-to-end gateway→vLLM time (non-streaming or first byte not split)",
     _MLABELS,
-    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 15, 60),
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 60),
 )
 REQUEST_COST_USD = Counter(
     "llm_gateway_estimated_gpu_cost_usd_total",
@@ -136,6 +137,27 @@ COMPLETION_TOKENS = Counter(
     "Completion tokens reported by vLLM usage",
     _MLABELS,
 )
+INFLIGHT_REQUESTS = Gauge(
+    "llm_gateway_inflight_requests",
+    "Requests currently in flight through the gateway (middle of the concurrency funnel)",
+    _MLABELS,
+)
+UPSTREAM_DURATION = Histogram(
+    "llm_gateway_upstream_duration_seconds",
+    "Time spent awaiting the upstream engine; total minus this = gateway + tunnel overhead",
+    _MLABELS,
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 60),
+)
+WASTED_COMPLETION_TOKENS = Counter(
+    "llm_gateway_wasted_completion_tokens_total",
+    "Completion tokens generated for streams the client abandoned — GPU work paid for and discarded",
+    _MLABELS,
+)
+REQUEST_OUTCOMES = Counter(
+    "llm_gateway_request_outcomes_total",
+    "Requests by outcome class — the error-rate signal (ok|client_error|server_error|upstream_unreachable)",
+    _MLABELS + ["outcome", "status_code"],
+)
 REQUESTS_TOTAL = Counter(
     "llm_gateway_requests_total",
     "Completed OpenAI proxy requests (non-streaming path increments once)",
@@ -145,7 +167,7 @@ TTFT_SECONDS = Histogram(
     "llm_gateway_time_to_first_token_seconds",
     "Time from proxy send to first non-empty upstream byte (streaming); non-stream ≈ full response time",
     _MLABELS,
-    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 15, 60),
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 1, 2, 5, 15),
 )
 STREAM_INTER_CHUNK_SECONDS = Histogram(
     "llm_gateway_stream_inter_chunk_delay_seconds",
@@ -396,6 +418,23 @@ def _upstream_base(technique: str) -> str:
 
 def _metric_lp(technique: str) -> dict[str, str]:
     return {"technique": technique, "server_profile": VLLM_SERVER_PROFILE}
+
+
+def _record_outcome(lp: dict[str, str], status_code: int) -> None:
+    """Classify a completed request so error rate is computable.
+
+    status_code 0 is reserved for 'never reached upstream' (connect/transport failure),
+    which is otherwise invisible: those paths return early without touching any counter.
+    """
+    if status_code == 0:
+        outcome = "upstream_unreachable"
+    elif status_code >= 500:
+        outcome = "server_error"
+    elif status_code >= 400:
+        outcome = "client_error"
+    else:
+        outcome = "ok"
+    REQUEST_OUTCOMES.labels(**lp, outcome=outcome, status_code=str(status_code)).inc()
 
 
 def _parse_openai_sse_usage(buffer: bytes) -> tuple[int, int]:
@@ -767,6 +806,7 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
     client: httpx.AsyncClient = request.app.state.client
 
     lp = _metric_lp(technique)
+    INFLIGHT_REQUESTS.labels(**lp).inc()
     full_url = f"{base}{upstream_path}"
     if request.url.query:
         full_url = f"{full_url}?{request.url.query}"
@@ -802,6 +842,8 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
             resp = await client.send(req, stream=True)
         except httpx.ConnectError as e:
             span.end()
+            _record_outcome(lp, 0)
+            INFLIGHT_REQUESTS.labels(**lp).dec()
             return _connect_error_response(e)
 
         tid = format(span.get_span_context().trace_id, "032x")
@@ -812,6 +854,9 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
             first_ttft_s: float | None = None
             inter: list[float] = []
             last_nonempty: float | None = None
+            # The finally block below also runs when the client disconnects mid-stream.
+            # Without this flag an abandoned stream would be recorded as a 200/ok.
+            completed = False
             try:
                 async for chunk in resp.aiter_bytes():
                     if chunk:
@@ -823,6 +868,7 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
                             inter.append(now - last_nonempty)
                         last_nonempty = now
                     yield chunk
+                completed = True
             finally:
                 await resp.aclose()
                 dt = time.perf_counter() - t0
@@ -848,6 +894,16 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
                 REQUEST_DURATION.labels(**lp).observe(dt)
                 REQUEST_COST_USD.labels(**lp).inc(_estimate_cost_usd(dt, gw_app))
                 REQUESTS_TOTAL.labels(**lp).inc()
+                if completed:
+                    _record_outcome(lp, resp.status_code)
+                else:
+                    # Client hung up mid-generation. Those tokens were paid for and
+                    # thrown away — "wasted-token rate" in the concurrency taxonomy.
+                    REQUEST_OUTCOMES.labels(
+                        **lp, outcome="cancelled", status_code="499"
+                    ).inc()
+                    WASTED_COMPLETION_TOKENS.labels(**lp).inc(ct)
+                INFLIGHT_REQUESTS.labels(**lp).dec()
                 await _append_gateway_metrics_log(
                     gw_app,
                     _build_metrics_log_row(
@@ -894,7 +950,10 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
         try:
             resp = await client.send(req, stream=False)
         except httpx.ConnectError as e:
+            _record_outcome(lp, 0)
+            INFLIGHT_REQUESTS.labels(**lp).dec()
             return _connect_error_response(e)
+        UPSTREAM_DURATION.labels(**lp).observe(time.perf_counter() - t0)
         content = await resp.aread()
         await resp.aclose()
         if resp.status_code >= 400:
@@ -906,6 +965,8 @@ async def _proxy(request: Request, upstream_path: str) -> Response:
         REQUEST_DURATION.labels(**lp).observe(dt)
         REQUEST_COST_USD.labels(**lp).inc(_estimate_cost_usd(dt, request.app))
         REQUESTS_TOTAL.labels(**lp).inc()
+        _record_outcome(lp, resp.status_code)
+        INFLIGHT_REQUESTS.labels(**lp).dec()
 
         pt, ct = 0, 0
         try:

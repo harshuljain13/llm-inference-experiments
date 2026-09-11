@@ -17,7 +17,7 @@ Do the steps **in sequence**. Keep **earlier** long-running steps open (Lambda S
 Skip if you already have a key registered with Lambda.
 
 ```bash
-ssh-keygen -t ed25519 -C "your_email@example.com" -f ~/.ssh/id_ed25519_lambda -N ""
+ssh-keygen -t ed25519 -C "harshuljain1393@gmail.com" -f ~/.ssh/id_ed25519_lambda -N ""
 cat ~/.ssh/id_ed25519_lambda.pub
 ```
 
@@ -51,7 +51,7 @@ You pay while the instance runs; **terminate** it when done to stop billing.
 ### Step 4 — SSH from your laptop into the instance
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_lambda ubuntu@<INSTANCE_IP>
+ssh -i ~/.ssh/id_ed25519_lambda ubuntu@150.136.155.156
 ```
 
 If this fails: confirm the instance is running, port 22 is allowed, and the key matches.
@@ -110,7 +110,7 @@ Wait until you see **application startup complete**. First install and first mod
 Do **not** close Step 6. In a **new** tab on the **laptop**:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_lambda -L 8000:127.0.0.1:8000 -N ubuntu@<INSTANCE_IP>
+ssh -i ~/.ssh/id_ed25519_lambda -L 8000:127.0.0.1:8000 -N ubuntu@150.136.155.156
 ```
 
 - **`-L 8000:127.0.0.1:8000`** forwards your laptop’s **`http://127.0.0.1:8000`** to vLLM on the instance.

@@ -15,6 +15,17 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-lifecycle
 
+  # Turns nginx stub_status (127.0.0.1:8081 on the host) into Prometheus metrics on :9113.
+  # Without this the load balancer is a blind spot in the concurrency funnel.
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    ports:
+      - "9113:9113"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --nginx.scrape-uri=http://host.docker.internal:8081/stub_status
+
   grafana:
     image: grafana/grafana:latest
     ports:

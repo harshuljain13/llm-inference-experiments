@@ -1,0 +1,347 @@
+{
+  "uid": "llm-inference-fullstack",
+  "title": "LLM Inference — Full Stack",
+  "tags": ["llm", "inference", "vllm", "oncall"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "server_profile",
+        "label": "Server profile (A/B arm)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(llm_gateway_requests_total, server_profile)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "0 — Golden signals (RED)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Request outcomes/s",
+      "description": "Layer 1. ok / client_error / server_error / upstream_unreachable / cancelled. Any sustained non-ok is worth investigating.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(llm_gateway_request_outcomes_total{server_profile=~\"$server_profile\"}[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error rate %",
+      "description": "Layer 1. Non-ok, non-cancelled share of completed requests. Cancellations are user behaviour, not service failure, so they are excluded.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(llm_gateway_request_outcomes_total{server_profile=~\"$server_profile\", outcome!~\"ok|cancelled\"}[5m])) / clamp_min(sum(rate(llm_gateway_request_outcomes_total{server_profile=~\"$server_profile\"}[5m])), 0.0001)",
+          "legendFormat": "error rate"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "End-to-end latency (gateway) p50 / p95 / p99",
+      "description": "Layer 1. Always read p50 next to p99: p50 flat while p99 rises means queueing or stragglers, not a uniform slowdown.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "1 — SPINE: Concurrency funnel (where are requests piling up?)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Concurrency by layer: nginx → gateway → engine",
+      "description": "Layers 2-4. Read as a funnel; gaps between adjacent layers localise the bottleneck.\n\n• nginx high, gateway low → gateway is the constraint\n• gateway high, engine running low → network/tunnel bound\n• waiting > 0 sustained → engine saturated, everything upstream is just buffering\n• running flat while load climbs → hit max_num_seqs or KV limit",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "nginx_connections_active", "legendFormat": "1. nginx active connections" },
+        { "refId": "B", "expr": "sum(llm_gateway_inflight_requests{server_profile=~\"$server_profile\"})", "legendFormat": "2. gateway in-flight" },
+        { "refId": "C", "expr": "vllm:num_requests_running", "legendFormat": "3. engine running" },
+        { "refId": "D", "expr": "vllm:num_requests_waiting", "legendFormat": "4. engine WAITING (saturation)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Little's Law consistency check (L = λW)",
+      "description": "Layer 3. Measured in-flight vs arrival-rate x mean-time-in-system. Sustained divergence indicates a hidden queue or dropped telemetry — the dashboard checking itself.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(llm_gateway_inflight_requests{server_profile=~\"$server_profile\"})", "legendFormat": "L measured" },
+        {
+          "refId": "B",
+          "expr": "sum(rate(llm_gateway_requests_total{server_profile=~\"$server_profile\"}[5m])) * (sum(rate(llm_gateway_request_duration_seconds_sum{server_profile=~\"$server_profile\"}[5m])) / clamp_min(sum(rate(llm_gateway_request_duration_seconds_count{server_profile=~\"$server_profile\"}[5m])), 0.0001))",
+          "legendFormat": "λW predicted"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "2 — SPINE: Latency attribution (where did the time go?)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean latency decomposition (stacked)",
+      "description": "Layers 2-5. T_e2e ≈ proxy/network + queue + prefill + decode.\n\nStacks MEANS, not quantiles — means are additive, quantiles are not. Whichever band dominates names the fix: queue → add capacity; prefill → chunked prefill / prefix caching; decode → speculative decoding / quantization; proxy → your transport (here, the SSH tunnel).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 40, "stacking": { "mode": "normal" }, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(llm_gateway_request_duration_seconds_sum{server_profile=~\"$server_profile\"}[5m])) / clamp_min(sum(rate(llm_gateway_request_duration_seconds_count{server_profile=~\"$server_profile\"}[5m])), 0.0001)) - (sum(rate(vllm:e2e_request_latency_seconds_sum[5m])) / clamp_min(sum(rate(vllm:e2e_request_latency_seconds_count[5m])), 0.0001))",
+          "legendFormat": "1. proxy + tunnel overhead"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(vllm:request_queue_time_seconds_sum[5m])) / clamp_min(sum(rate(vllm:request_queue_time_seconds_count[5m])), 0.0001)",
+          "legendFormat": "2. queue wait"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(vllm:request_prefill_time_seconds_sum[5m])) / clamp_min(sum(rate(vllm:request_prefill_time_seconds_count[5m])), 0.0001)",
+          "legendFormat": "3. prefill"
+        },
+        {
+          "refId": "D",
+          "expr": "sum(rate(vllm:request_decode_time_seconds_sum[5m])) / clamp_min(sum(rate(vllm:request_decode_time_seconds_count[5m])), 0.0001)",
+          "legendFormat": "4. decode"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "3 — Client experience (TTFT / ITL / TPOT)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "TTFT — gateway vs engine",
+      "description": "Layer 1. Gateway TTFT minus engine TTFT = network + proxy cost of the first token. Divergence between the two lines is transport, not model.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(llm_gateway_time_to_first_token_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))", "legendFormat": "gateway p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_gateway_time_to_first_token_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))", "legendFormat": "gateway p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))", "legendFormat": "engine p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inter-token latency (ITL)",
+      "description": "Layer 1. Smoothness of streaming. 1/ITL is the per-user token rate.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Per-request token rate (as one user sees it)",
+      "description": "Layer 5. Per-request decode rate falls as concurrency rises even while aggregate throughput climbs. Watch this against the throughput row to see the tradeoff directly.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(llm_gateway_completion_tokens_per_second_bucket{server_profile=~\"$server_profile\"}[5m])))", "legendFormat": "p50 tok/s per request" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_gateway_time_per_output_token_seconds_bucket{server_profile=~\"$server_profile\"}[5m])))", "legendFormat": "p95 TPOT (s)" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "4 — Throughput & workload shape",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Token throughput — input vs output",
+      "description": "Layer 5 / cross-layer. Output tok/s is the real serving-capacity number; requests/s misleads when response lengths vary.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:generation_tokens_total[1m]))", "legendFormat": "output tok/s (decode capacity)" },
+        { "refId": "B", "expr": "sum(rate(vllm:prompt_tokens_total[1m]))", "legendFormat": "input tok/s (prefill capacity)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Batching efficiency — tokens per engine step",
+      "description": "Layer 4. Low fill under load points to fragmentation or incompatible request shapes, not lack of capacity.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:iteration_tokens_total_sum[5m])) / clamp_min(sum(rate(vllm:iteration_tokens_total_count[5m])), 0.0001)", "legendFormat": "mean tokens/step" },
+        { "refId": "B", "expr": "vllm:num_requests_running", "legendFormat": "batch size (running seqs)" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "5 — Capacity, waste & correctness",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "KV cache utilization",
+      "description": "Layer 6. For autoregressive LLMs this is the real concurrency limit. Sustained operation near the top means eviction and preemption are imminent.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "vllm:kv_cache_usage_perc", "legendFormat": "KV cache" },
+        { "refId": "B", "expr": "vllm:gpu_cache_usage_perc", "legendFormat": "KV cache (older builds)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Preemptions — hidden recompute waste",
+      "description": "Layer 4. KV exhausted forces eviction and recomputation. A silent latency killer that never shows up as an error.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:num_preemptions_total[5m]))", "legendFormat": "preemptions/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prefix cache hit rate",
+      "description": "Layer 5. The only direct evidence prefix caching is doing anything. Requires --enable-prefix-caching; flat zero otherwise.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:gpu_prefix_cache_hits[5m])) / clamp_min(sum(rate(vllm:gpu_prefix_cache_queries[5m])), 0.0001)", "legendFormat": "hit rate" },
+        { "refId": "B", "expr": "sum(rate(vllm:prefix_cache_hits[5m])) / clamp_min(sum(rate(vllm:prefix_cache_queries[5m])), 0.0001)", "legendFormat": "hit rate (alt name)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Finish reasons — silent truncation",
+      "description": "Layer 1. finished_reason=\"length\" means output was cut at the token limit. Users see truncated answers and nothing errors.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (finished_reason) (rate(vllm:request_success_total[5m]))", "legendFormat": "{{finished_reason}}" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "6 — Cost & waste",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost per 1k completion tokens",
+      "description": "Cross-layer. Per-token cost is the only figure comparable across configurations; $/hour is not. Set GPU_HOURLY_COST_USD to your real instance rate or this is proportionally wrong.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "custom": { "drawStyle": "line", "fillOpacity": 8 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum by (server_profile) (rate(llm_gateway_estimated_gpu_cost_usd_total{server_profile=~\"$server_profile\"}[5m])) / clamp_min(sum by (server_profile) (rate(llm_gateway_completion_tokens_total{server_profile=~\"$server_profile\"}[5m])), 0.0001)",
+          "legendFormat": "$/1k tokens {{server_profile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Wasted tokens — cancelled streams",
+      "description": "Cross-layer. Tokens generated for clients that hung up: GPU work paid for and discarded. Should be near zero for batch/benchmark traffic.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(llm_gateway_wasted_completion_tokens_total{server_profile=~\"$server_profile\"}[5m]))", "legendFormat": "wasted tok/s" },
+        { "refId": "B", "expr": "sum(rate(llm_gateway_request_outcomes_total{server_profile=~\"$server_profile\", outcome=\"cancelled\"}[5m]))", "legendFormat": "cancellations/s" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

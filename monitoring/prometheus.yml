@@ -1,30 +1,45 @@
 # monitoring/prometheus.yml — laptop scrape targets (Lambda vLLM via SSH tunnel).
-# Linux Docker: docker-compose in this folder sets extra_hosts for host.docker.internal.
+# Linux Docker: docker-compose sets extra_hosts host.docker.internal.
 #
-# Gateway: /metrics on GATEWAY_METRICS_PORT (default 9101) — opened on FastAPI startup (python gateway.py or uvicorn gateway:app).
-# vLLM: /metrics on the same port as the OpenAI API (8000 with README tunnel).
+# Every job carries `topology` and `layer` so the three layers can be joined on one panel
+# (the concurrency funnel: lb -> gateway -> engine).
+#
+# `server_profile` on the engine job is the A/B key. vLLM does not emit it, so it is
+# attached here at scrape time. Change it when you switch engine flags, then:
+#   curl -X POST http://127.0.0.1:9090/-/reload
+# (--web.enable-lifecycle is already set in docker-compose.yml)
 
 global:
-  scrape_interval: 15s
+  # 5s, not 15s: benchmark runs are often under a minute and queue-depth spikes last
+  # seconds. At 15s you sample a burst once or twice and the graph lies.
+  scrape_interval: 5s
   evaluation_interval: 15s
 
 scrape_configs:
+  # nginx load balancer, via nginx-prometheus-exporter reading stub_status on host :8081
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+        labels:
+          topology: single_gpu_gateway
+          layer: lb
+
+  # FastAPI gateway: /metrics on GATEWAY_METRICS_PORT (default 9101), opened at startup
   - job_name: gateway
     static_configs:
       - targets: ["host.docker.internal:9101"]
+        labels:
+          topology: single_gpu_gateway
+          layer: gateway
     metrics_path: /metrics
 
-  # vLLM on laptop localhost:8000 via SSH tunnel (Prometheus in Docker → host.docker.internal)
+  # vLLM on laptop 127.0.0.1:8000 via SSH tunnel (Prometheus in Docker -> host.docker.internal).
+  # Same port as the OpenAI API.
   - job_name: vllm_tunnel
-    scheme: http
     static_configs:
       - targets: ["host.docker.internal:8000"]
+        labels:
+          topology: single_gpu_gateway
+          layer: engine
+          server_profile: baseline
     metrics_path: /metrics
-
-  # Optional: engine fleet (scripts/vllm_engine/run_engine_fleet.sh) + multi-port tunnel — duplicate this job
-  # per port or use static_configs.targets: ["host.docker.internal:8001", ...] with relabel if needed.
-  # - job_name: vllm_tunnel_8001
-  #   scheme: http
-  #   static_configs:
-  #     - targets: ["host.docker.internal:8001"]
-  #   metrics_path: /metrics
