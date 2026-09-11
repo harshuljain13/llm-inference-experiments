@@ -1,0 +1,115 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [{"title": "Jaeger UI", "type": "link", "url": "http://localhost:16686", "icon": "external link"}],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "content": "## Technique + cost (gateway)\n\n**Labels:** `technique` = request label (`X-Technique` / crew `--technique`). `server_profile` = `VLLM_SERVER_PROFILE` in `.env` (name for the vLLM server flag set you are running on Lambda). Align them when comparing.\n\n**Cost:** `duration_s/3600 * GPU_HOURLY_COST_USD` → `llm_gateway_estimated_gpu_cost_usd_total`.\n\n**Traces:** `X-Trace-Id` → Jaeger.\n\n**Optional:** `VLLM_BACKEND_MAP_JSON` routes each technique to a different vLLM base URL (e.g. another port on the instance).",
+        "mode": "markdown"
+      },
+      "title": "How to read this board",
+      "type": "text"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 2,
+      "targets": [
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_estimated_gpu_cost_usd_total[5m]))",
+          "legendFormat": "{{technique}} / {{server_profile}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Estimated GPU $/s by technique (rate of counter)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "id": 3,
+      "description": "Subtracts aggregate baseline $/s from each series (scalar broadcast). `or vector(0)` inside scalar() keeps the graph alive if no `technique=baseline` traffic in the range.",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_estimated_gpu_cost_usd_total[5m])) - scalar(sum(rate(llm_gateway_estimated_gpu_cost_usd_total{technique=\"baseline\"}[5m])) or vector(0))",
+          "legendFormat": "{{technique}} / {{server_profile}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Cost rate delta vs baseline",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "id": 4,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, technique, server_profile) (rate(llm_gateway_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{technique}} / {{server_profile}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway E2E latency p95 by technique",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_prompt_tokens_total[5m]))",
+          "legendFormat": "prompt {{technique}}/{{server_profile}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_completion_tokens_total[5m]))",
+          "legendFormat": "completion {{technique}}/{{server_profile}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Token rates by technique (from usage)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "id": 6,
+      "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true},
+      "targets": [
+        {
+          "expr": "sum by (technique, server_profile) (increase(llm_gateway_estimated_gpu_cost_usd_total[1h]))",
+          "legendFormat": "{{technique}} / {{server_profile}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Estimated cost added (last 1h increase) — bar view",
+      "type": "bargauge"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["gateway", "cost", "technique"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "Technique cost + traces",
+  "uid": "tt-technique-cost",
+  "version": 5
+}

@@ -1,0 +1,41 @@
+# Run from this directory:  docker compose up -d
+# Prometheus scrapes the gateway (:9101) and vLLM (:8000) on your host via host.docker.internal
+# (Linux: extra_hosts below maps host.docker.internal → host gateway).
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+
+  # Turns nginx stub_status (127.0.0.1:8081 on the host) into Prometheus metrics on :9113.
+  # Without this the load balancer is a blind spot in the concurrency funnel.
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    ports:
+      - "9113:9113"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --nginx.scrape-uri=http://host.docker.internal:8081/stub_status
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana_dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

@@ -1,0 +1,155 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"content": "## vLLM overview (engine-native metrics)\n\n**vLLM 0.13+** exposes OpenMetrics-style names with a **`vllm:`** prefix (e.g. `vllm:request_prefill_time_seconds_bucket`), scraped from **`:8000/metrics`**. Older builds used **`vllm_`** underscores — adjust in **Explore** if needed.\n\n**Decode panel** uses **`vllm:inter_token_latency_seconds`** (per autoregressive step); there is no separate `request_decode` histogram in current vLLM exports.\n\n**Speculative decode panel (below):** shows **`vllm:spec_decode_*`** from the **vLLM process only**. It is **not** tied to Crew/gateway **`--technique speculative_decoding`** or **`combined`** — those names are just **`X-Technique`** labels on gateway logs and `llm_gateway_*`. If this panel is empty, vLLM was almost certainly **not** launched with speculative decoding enabled (no draft model / spec flags), so the engine never exports these series. Confirm with `curl -sS :8000/metrics | grep -i spec_decode` on the tunnel.\n\n**Gateway** metrics (`llm_gateway_*`): dashboard **Gateway — proxy timings + cost** (per-technique request rates, latency, cost).\n\n**Jaeger:** **`X-Trace-Id`**.", "mode": "markdown"},
+      "title": "Notes",
+      "type": "text"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "id": 2,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_prefill_time_seconds_bucket[5m])))",
+          "legendFormat": "p95 prefill",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:request_prefill_time_seconds_bucket[5m])))",
+          "legendFormat": "p50 prefill",
+          "refId": "B"
+        }
+      ],
+      "title": "Prefill latency (vllm:request_prefill_time_seconds)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+      "id": 3,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 inter-token",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50 inter-token",
+          "refId": "B"
+        }
+      ],
+      "title": "Inter-token latency (decode steps, vllm:inter_token_latency_seconds)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+      "id": 4,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+          "legendFormat": "p95 TTFT",
+          "refId": "A"
+        }
+      ],
+      "title": "TTFT (vllm:time_to_first_token_seconds)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "tps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(rate(vllm:generation_tokens_total[1m]))",
+          "legendFormat": "gen tokens/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Generation throughput (tokens/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23},
+      "id": 6,
+      "targets": [
+        {
+          "expr": "vllm:kv_cache_usage_perc",
+          "legendFormat": "KV cache %",
+          "refId": "A"
+        }
+      ],
+      "title": "KV cache usage (vllm:kv_cache_usage_perc)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Engine metrics from vLLM :8000/metrics — not from gateway X-Technique. Empty if vLLM was not started with speculative decoding (draft/spec flags). Crew labels like speculative_decoding or combined only tag llm_gateway_* / JSONL; they do not turn this on.",
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23},
+      "id": 7,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "vllm:spec_decode_draft_acceptance_rate",
+          "legendFormat": "draft_acceptance_rate (gauge, vllm:)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "sum(rate(vllm:spec_decode_num_accepted_tokens_total[5m])) / sum(rate(vllm:spec_decode_num_draft_tokens_total[5m]))",
+          "legendFormat": "accepted/draft (counters, vllm:)",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "vllm_spec_decode_draft_acceptance_rate",
+          "legendFormat": "draft_acceptance_rate (legacy vllm_)",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "sum(rate(vllm_spec_decode_num_accepted_tokens_total[5m])) / sum(rate(vllm_spec_decode_num_draft_tokens_total[5m]))",
+          "legendFormat": "accepted/draft (legacy vllm_)",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Speculative decode (if enabled)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["vllm", "texttinyllama"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "vLLM — prefill vs decode",
+  "uid": "tt-vllm-overview",
+  "version": 7
+}

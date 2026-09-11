@@ -1,0 +1,29 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+cost-monitoring.txt
+*-credentials.txt
+*.pem
+id_rsa
+id_ed25519
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Local gateway metric dumps (GATEWAY_METRICS_LOG_DIR)
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

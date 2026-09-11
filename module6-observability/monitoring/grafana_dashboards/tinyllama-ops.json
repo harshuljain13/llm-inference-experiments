@@ -1,0 +1,112 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {"title": "Jaeger UI", "type": "link", "url": "http://localhost:16686", "icon": "external link"}
+  ],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "**vLLM :8000/metrics** (job `vllm_tunnel`). KV cache fill, decode/TTFT pressure, and throughput — not Crew `--technique` labels. Metric names vary by vLLM version (`vllm:` vs `vllm_`).",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 8, "spanNulls": false}},
+        "overrides": [
+          {"matcher": {"id": "byRegexp", "options": "KV cache"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "min", "value": 0}, {"id": "max", "value": 1}]},
+          {"matcher": {"id": "byRegexp", "options": "Generation tok/s"}, "properties": [{"id": "unit", "value": "tps"}]},
+          {"matcher": {"id": "byRegexp", "options": "p95 inter-token"}, "properties": [{"id": "unit", "value": "s"}]},
+          {"matcher": {"id": "byRegexp", "options": "p95 engine TTFT"}, "properties": [{"id": "unit", "value": "s"}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "vllm:kv_cache_usage_perc", "legendFormat": "KV cache", "refId": "A"},
+        {"expr": "sum(rate(vllm:generation_tokens_total[1m]))", "legendFormat": "Generation tok/s", "refId": "B"},
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 inter-token (decode step)",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+          "legendFormat": "p95 engine TTFT",
+          "refId": "D"
+        }
+      ],
+      "title": "1 — GPU / engine (vLLM)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "**Gateway :9101/metrics** — what each experiment run did: `technique` = `X-Technique` / `crew.py --technique`; `server_profile` = `VLLM_SERVER_PROFILE` in `.env`.",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 8}},
+        "overrides": [
+          {"matcher": {"id": "byRegexp", "options": "req/s"}, "properties": [{"id": "unit", "value": "reqps"}]},
+          {"matcher": {"id": "byRegexp", "options": "p95 E2E"}, "properties": [{"id": "unit", "value": "s"}]},
+          {"matcher": {"id": "byRegexp", "options": "completion tok/s"}, "properties": [{"id": "unit", "value": "tps"}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 10},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_requests_total[5m]))",
+          "legendFormat": "req/s {{technique}} / {{server_profile}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, technique, server_profile) (rate(llm_gateway_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 E2E {{technique}} / {{server_profile}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_completion_tokens_total[5m]))",
+          "legendFormat": "completion tok/s {{technique}} / {{server_profile}}",
+          "refId": "C"
+        }
+      ],
+      "title": "2 — Runs (gateway, by technique)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Estimated rental $ from gateway wall time × `GPU_HOURLY_COST_USD` (and optional Lambda API). Delta subtracts aggregate **baseline** $/s (scalar); stays defined if baseline had no traffic in range.",
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"drawStyle": "line", "fillOpacity": 8}}},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20},
+      "id": 3,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_estimated_gpu_cost_usd_total[5m]))",
+          "legendFormat": "$/s {{technique}} / {{server_profile}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "expr": "sum by (technique, server_profile) (rate(llm_gateway_estimated_gpu_cost_usd_total[5m])) - scalar(sum(rate(llm_gateway_estimated_gpu_cost_usd_total{technique=\"baseline\"}[5m])) or vector(0))",
+          "legendFormat": "Δ $/s vs baseline {{technique}} / {{server_profile}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "3 — Cost (gateway model)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["tinyllama", "gpu", "runs", "cost"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "TinyLlama — GPU, runs & cost",
+  "uid": "tt-tinyllama-ops",
+  "version": 1
+}
