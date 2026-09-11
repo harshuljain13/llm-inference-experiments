@@ -1,6 +1,6 @@
 # Module 6 — Observability: The Whole Stack, Instrumented
 
-> From the standalone `fullstack-inferencing` repo. Prometheus, Grafana, engine A/B, cost.
+> Course **class 3**, shipped as the standalone `fullstack-inferencing` repo. vLLM + Prometheus + Grafana, engine A/B, cost.
 
 **One sentence:** Wire a full production stack — CrewAI → nginx → gateway → vLLM on a real GPU — then instrument it end to end with Prometheus and Grafana, and A/B the engine flags that actually move the numbers.
 
@@ -96,4 +96,4 @@ module6        run the whole stack and watch it in production terms
 
 ---
 
-*Absorbed from the standalone `fullstack-inferencing` repo; full history preserved via `git subtree`.*
+*Course class 3. Absorbed from the standalone `fullstack-inferencing` repo; full history preserved via `git subtree`.*

@@ -99,10 +99,12 @@ Modules are numbered sequentially. If you're looking for "class 7" or one of the
 | `class2` | [`module2-server`](module2-server/) | renumbered sequentially |
 | `class5` | [`module3-engine`](module3-engine/) | renumbered sequentially |
 | `class7` | [`module4-gateway`](module4-gateway/) | renumbered sequentially |
-| `ray_project` repo | [`module5-distributed`](module5-distributed/) | absorbed via `git subtree` |
-| `fullstack-inferencing` repo | [`module6-observability`](module6-observability/) | absorbed via `git subtree` |
+| `class3` — `fullstack-inferencing` repo | [`module6-observability`](module6-observability/) | absorbed via `git subtree` |
+| `class6` — `ray_project` repo | [`module5-distributed`](module5-distributed/) | absorbed via `git subtree` |
 
-Course classes 3, 4, and 6 had no lab code, which is why the original numbering had gaps.
+Only course class 4 had no lab code.
+
+**Modules are ordered by stack layer, not by course order.** Classes 3 and 6 shipped as standalone repos and sit late in the module numbering because observability is cross-cutting and multi-GPU builds on the single-GPU modules.
 
 **Original history is intact.** Pre-rename state is on the `upstream-course` remote:
 
