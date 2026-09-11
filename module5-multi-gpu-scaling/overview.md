@@ -62,9 +62,9 @@ Benchmark data-parallel scaling with the per-stream number and you'll conclude, 
 ## Where this sits
 
 ```
-module4-gateway      one gateway, two replicas, one GPU
+module4-admission-and-routing      one gateway, two replicas, one GPU
       ↓
-module5-distributed  many GPUs — split the model, or replicate it
+module5-multi-gpu-scaling  many GPUs — split the model, or replicate it
 ```
 
 Module 4 decided *which* replica gets a request. Module 5 asks how those replicas should be constituted in the first place.

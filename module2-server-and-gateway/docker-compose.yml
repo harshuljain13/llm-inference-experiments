@@ -6,7 +6,7 @@
 #   docker compose --profile intro up llama-engine-cpu   # Warm-up notebook (CPU / Mac)
 #   docker compose --profile intro-gpu up llama-engine-gpu
 #   docker compose --profile relay up       # Parts 4–5 (RelayServe + llama.cpp)
-#   docker compose --profile lab up jupyter # Notebook UI (token: module2-server)
+#   docker compose --profile lab up jupyter # Notebook UI (token: module2-server-and-gateway)
 #
 # Mac local smoke test only (no GPU — not for Part 3–4 submission):
 #   docker compose --profile cpu up              # Part 2: naive-server + Open WebUI
@@ -59,7 +59,7 @@ services:
       - "3000:8080"
     environment:
       OPENAI_API_BASE_URL: http://naive-server-cpu:8000/v1
-      OPENAI_API_KEY: module2-server
+      OPENAI_API_KEY: module2-server-and-gateway
       ENABLE_OPENAI_API: "true"
       ENABLE_OLLAMA_API: "false"
       WEBUI_AUTH: "false"
@@ -189,7 +189,7 @@ services:
     environment:
       JUPYTER_PORT: 8888
     volumes:
-      - .:/workspace/module2-server
+      - .:/workspace/module2-server-and-gateway
       - hf-cache:/cache/huggingface
     deploy:
       resources:

@@ -18,7 +18,7 @@ MODEL=${MODEL:-Qwen/Qwen3-0.6B}
 
 if ! command -v nvidia-smi &>/dev/null; then
   echo "launch_replicas.sh runs on the Lambda GPU, not the Mac." >&2
-  echo "On your Mac:  cd module4-gateway && bash setup/sync_to_lambda.sh && bash setup/ssh.sh" >&2
+  echo "On your Mac:  cd module4-admission-and-routing && bash setup/sync_to_lambda.sh && bash setup/ssh.sh" >&2
   exit 1
 fi
 

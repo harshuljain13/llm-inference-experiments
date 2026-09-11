@@ -18,7 +18,7 @@ Commands below — same content as [COMMANDS.md](./COMMANDS.md).
 ---
 
 # SETUP (once)
-cd module3-engine
+cd module3-build-your-own-engine
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -27,7 +27,7 @@ source .env
 python -c "from smol_vllm import LLMEngine; print('smol_vllm OK')"
 
 # EVERY NEW TAB
-cd module3-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd module3-build-your-own-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # If import fails: vendor folder must be smol-vllm/ (not smol_vllm/) — reinstall:
 pip install -r requirements.txt

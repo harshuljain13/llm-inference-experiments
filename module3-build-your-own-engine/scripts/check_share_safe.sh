@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run before pushing/sharing module3-engine — fails if instructor secrets appear in tracked files.
+# Run before pushing/sharing module3-build-your-own-engine — fails if instructor secrets appear in tracked files.
 set -euo pipefail
 
 CLASS5_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,8 +8,8 @@ cd "$CLASS5_ROOT"
 FAIL=0
 
 if git rev-parse --is-inside-work-tree &>/dev/null; then
-  if git ls-files --error-unmatch module3-engine/.env &>/dev/null 2>&1; then
-    echo "FAIL: module3-engine/.env is tracked by git — run: git rm --cached module3-engine/.env" >&2
+  if git ls-files --error-unmatch module3-build-your-own-engine/.env &>/dev/null 2>&1; then
+    echo "FAIL: module3-build-your-own-engine/.env is tracked by git — run: git rm --cached module3-build-your-own-engine/.env" >&2
     FAIL=1
   fi
 fi
@@ -44,7 +44,7 @@ for pat in "${PATTERNS[@]}"; do
 done
 
 if [[ "$FAIL" -eq 0 ]]; then
-  echo "OK: no obvious secrets in module3-engine shareable files"
+  echo "OK: no obvious secrets in module3-build-your-own-engine shareable files"
 else
   exit 1
 fi

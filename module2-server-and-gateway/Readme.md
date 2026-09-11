@@ -6,7 +6,7 @@ Commands below — same content as [COMMANDS.md](./COMMANDS.md).
 ---
 
 # SETUP (once)
-cd module2-server
+cd module2-server-and-gateway
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=$PWD
@@ -16,7 +16,7 @@ bash scripts/modal.sh deploy all
 python scripts/download_gguf.py
 
 # EVERY NEW TAB
-cd module2-server && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd module2-server-and-gateway && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # WARM-UP
 python inference_101.py

@@ -1,5 +1,5 @@
 # SETUP (once)
-cd module3-engine
+cd module3-build-your-own-engine
 cp .env.example .env          # fill LAMBDA and HF_TOKEN
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -10,7 +10,7 @@ bash scripts/lambda_check.sh    # Mac: expect CPU-only; Lambda: Real model ready
 jupyter notebook class5.ipynb
 
 # EVERY NEW TAB
-cd module3-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
+cd module3-build-your-own-engine && source .venv/bin/activate && export PYTHONPATH=$PWD
 
 # NOTEBOOK — Part A + C + B (CPU) + Part D (GPU on Lambda)
 jupyter notebook class5.ipynb
@@ -47,7 +47,7 @@ print()
 "
 
 # LAMBDA GPU — see LAMBDA.md
-# Mac: cd module3-engine && source .env && bash scripts/sync_to_lambda.sh
+# Mac: cd module3-build-your-own-engine && source .env && bash scripts/sync_to_lambda.sh
 # Mac: ssh -i "$LAMBDA_SSH_KEY" -L 8889:127.0.0.1:8888 $LAMBDA
 # Lambda: bash scripts/lambda_jupyter.sh
 # Mac: open http://127.0.0.1:8889/

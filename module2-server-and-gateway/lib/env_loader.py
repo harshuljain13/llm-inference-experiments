@@ -1,4 +1,4 @@
-"""Load gitignored .env files for module2-server scripts (no extra dependencies)."""
+"""Load gitignored .env files for module2-server-and-gateway scripts (no extra dependencies)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _parse_env_file(path: Path) -> None:
 
 
 def load_class2_env() -> None:
-    """Load module2-server/.env then secrets/*.env (later files do not override earlier)."""
+    """Load module2-server-and-gateway/.env then secrets/*.env (later files do not override earlier)."""
     _parse_env_file(CLASS2_ROOT / ".env")
     secrets = CLASS2_ROOT / "secrets"
     if secrets.is_dir():

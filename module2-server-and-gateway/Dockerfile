@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NAIVE_SERVER_PORT=8000 \
     RELAYSERVE_PORT=8080
 
-WORKDIR /workspace/module2-server
+WORKDIR /workspace/module2-server-and-gateway
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
